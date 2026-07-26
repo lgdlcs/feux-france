@@ -1,0 +1,115 @@
+{
+  "updated": "2026-07-26T14:35:22Z",
+  "zones": [
+    {
+      "nom": "Feu de Saumos",
+      "dept": "Gironde / Landes (33-40)",
+      "lat": 44.9119,
+      "lon": -1.0029,
+      "hectares": 42000,
+      "hectares_note": "18 moyens aeriens engages au point officiel du 26/07 13h (detail par type non precise); detail aerien ci-dessous issu du bilan CNEWS du 25/07",
+      "statut": "actif, non fixe",
+      "moyens": {
+        "pompiers": 2500,
+        "militaires": 1500,
+        "canadairs": 4,
+        "dash": 2,
+        "helicopteres": 2,
+        "a400m": 1
+      },
+      "habitations_detruites": 240,
+      "maj": "2026-07-26 13:00",
+      "sources": [
+        {"url": "https://www.bougerabordeaux.com/actu/news/incendie-en-gironde-le-point-officiel-a-13-h-ce-dimanche-26-juillet/", "titre": "Prefecture de la Gironde — point officiel 26/07 13h"}
+      ]
+    },
+    {
+      "nom": "Feu de Biscarrosse",
+      "dept": "Landes (40)",
+      "lat": 44.4077,
+      "lon": -1.1525,
+      "hectares": 3600,
+      "hectares_note": "contenu mais pas fixe",
+      "statut": "contenu mais pas fixe",
+      "moyens": {
+        "pompiers": 500,
+        "militaires": null,
+        "canadairs": null,
+        "dash": null,
+        "helicopteres": null,
+        "a400m": null
+      },
+      "habitations_detruites": null,
+      "maj": "2026-07-26",
+      "sources": [
+        {"url": "https://france3-regions.franceinfo.fr/nouvelle-aquitaine/", "titre": "France 3 Nouvelle-Aquitaine — 26/07 (pompiers datant du 24/07)"}
+      ]
+    },
+    {
+      "nom": "Feu du Gros Bessillon (Ponteves)",
+      "dept": "Var (83)",
+      "lat": 43.5509,
+      "lon": 6.0687,
+      "hectares": 4500,
+      "hectares_note": null,
+      "statut": "toujours actif, risque eleve de reactivation (retour du mistral)",
+      "moyens": {
+        "pompiers": 1030,
+        "militaires": null,
+        "canadairs": 2,
+        "dash": 1,
+        "helicopteres": 3,
+        "a400m": null
+      },
+      "habitations_detruites": null,
+      "maj": "2026-07-26",
+      "sources": [
+        {"url": "https://www.frequence-sud.fr/art-112078-nouveau_bilan_a_4500ha__retour_du_mistral__les_informations_sur_l_incendie_du_gros_bessillon_ce_dimanche_ponteves", "titre": "Frequence-Sud — nouveau bilan 4500 ha, incendie du Gros Bessillon 26/07"}
+      ]
+    },
+    {
+      "nom": "Feu de Corte",
+      "dept": "Haute-Corse (2B)",
+      "lat": 42.2737,
+      "lon": 9.0691,
+      "hectares": 800,
+      "hectares_note": "plus de 800 ha (Corsenetinfos 25/07)",
+      "statut": "actif (reprise contenue vers 4h, lisiere droite toujours active)",
+      "moyens": {
+        "pompiers": 300,
+        "militaires": null,
+        "canadairs": null,
+        "dash": null,
+        "helicopteres": null,
+        "a400m": null
+      },
+      "habitations_detruites": null,
+      "maj": "2026-07-26",
+      "sources": [
+        {"url": "https://www.corsenetinfos.corsica/Corte-300-hommes-pour-faire-face-a-l-incendie_a91874.html", "titre": "Corsenetinfos — Corte, 300 hommes face a l'incendie"}
+      ]
+    },
+    {
+      "nom": "Feu de Biguglia-Furiani",
+      "dept": "Haute-Corse (2B)",
+      "lat": 42.6133,
+      "lon": 9.4401,
+      "hectares": 100,
+      "hectares_note": null,
+      "statut": "actif",
+      "moyens": {
+        "pompiers": 130,
+        "militaires": null,
+        "canadairs": null,
+        "dash": null,
+        "helicopteres": null,
+        "a400m": null
+      },
+      "habitations_detruites": null,
+      "maj": "2026-07-26",
+      "sources": [
+        {"url": "https://www.corsenetinfos.corsica/", "titre": "France 3 Corse / Corsenetinfos — 26/07 (2 avions bombardiers, type non precise)"}
+      ]
+    }
+  ]
+}

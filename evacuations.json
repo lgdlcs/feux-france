@@ -1,0 +1,83 @@
+{
+  "_comment": "Évacuations annoncées officiellement (préfectures, relayées par la presse). Fichier tenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/evacuations. Coordonnées = centres officiels geo.api.gouv.fr.",
+  "updated": "2026-07-26T14:30:00Z",
+  "evacuations": [
+    {
+      "commune": "Marcheprime", "dept": "Gironde (33)", "lat": 44.7033, "lon": -0.8557,
+      "population": 5696, "statut": "évacuation totale",
+      "annonce": "2026-07-25 (soir)",
+      "source": "Préfecture de la Gironde via franceinfo",
+      "source_url": "https://www.franceinfo.fr/faits-divers/incendie/incendie-en-gironde-environ-8-000-nouvelles-evacuations-ordonnees-pres-de-bordeaux-au-regard-de-la-progression-du-feu-annonce-la-prefecture_8122355.html"
+    },
+    {
+      "commune": "Le Barp", "dept": "Gironde (33)", "lat": 44.6297, "lon": -0.7437,
+      "population": 5806, "statut": "évacuation totale",
+      "annonce": "2026-07-25 (soir)",
+      "source": "Préfecture de la Gironde via franceinfo",
+      "source_url": "https://www.franceinfo.fr/faits-divers/incendie/incendie-en-gironde-environ-8-000-nouvelles-evacuations-ordonnees-pres-de-bordeaux-au-regard-de-la-progression-du-feu-annonce-la-prefecture_8122355.html"
+    },
+    {
+      "commune": "Biganos", "dept": "Gironde (33)", "lat": 44.6599, "lon": -0.9582,
+      "population": 11431, "statut": "évacuation totale",
+      "annonce": "2026-07-25 (soir)",
+      "source": "Préfecture de la Gironde via franceinfo",
+      "source_url": "https://www.franceinfo.fr/faits-divers/incendie/incendie-en-gironde-environ-8-000-nouvelles-evacuations-ordonnees-pres-de-bordeaux-au-regard-de-la-progression-du-feu-annonce-la-prefecture_8122355.html"
+    },
+    {
+      "commune": "Mios", "dept": "Gironde (33)", "lat": 44.6105, "lon": -0.8913,
+      "population": 12043, "statut": "évacuation totale",
+      "annonce": "2026-07-25 (soir)",
+      "source": "Préfecture de la Gironde via franceinfo",
+      "source_url": "https://www.franceinfo.fr/faits-divers/incendie/incendie-en-gironde-environ-8-000-nouvelles-evacuations-ordonnees-pres-de-bordeaux-au-regard-de-la-progression-du-feu-annonce-la-prefecture_8122355.html"
+    },
+    {
+      "commune": "Cestas", "dept": "Gironde (33)", "lat": 44.7274, "lon": -0.7349,
+      "population": 16666, "statut": "évacuation totale",
+      "annonce": "2026-07-25 (soir, après 4 quartiers le matin)",
+      "source": "Préfecture de la Gironde via franceinfo",
+      "source_url": "https://www.franceinfo.fr/faits-divers/incendie/incendie-en-gironde-environ-8-000-nouvelles-evacuations-ordonnees-pres-de-bordeaux-au-regard-de-la-progression-du-feu-annonce-la-prefecture_8122355.html"
+    },
+    {
+      "commune": "Saint-Médard-en-Jalles", "dept": "Gironde (33)", "lat": 44.8861, "lon": -0.7823,
+      "population": 32910, "statut": "évacuation préventive",
+      "annonce": "2026-07-25",
+      "source": "Le Monde",
+      "source_url": "https://www.lemonde.fr/planete/video/2026/07/25/video-sept-communes-de-la-gironde-evacuees-de-maniere-preventive-a-cause-des-feux-faisant-rage-dans-la-region_6732168_3244.html"
+    },
+    {
+      "commune": "Le Haillan", "dept": "Gironde (33)", "lat": 44.8713, "lon": -0.6903,
+      "population": 11392, "statut": "évacuation préventive",
+      "annonce": "2026-07-25",
+      "source": "Le Monde",
+      "source_url": "https://www.lemonde.fr/planete/video/2026/07/25/video-sept-communes-de-la-gironde-evacuees-de-maniere-preventive-a-cause-des-feux-faisant-rage-dans-la-region_6732168_3244.html"
+    },
+    {
+      "commune": "Saint-Jean-d'Illac", "dept": "Gironde (33)", "lat": 44.7973, "lon": -0.8156,
+      "population": 9616, "statut": "évacuation préventive",
+      "annonce": "2026-07-25",
+      "source": "Le Monde",
+      "source_url": "https://www.lemonde.fr/planete/video/2026/07/25/video-sept-communes-de-la-gironde-evacuees-de-maniere-preventive-a-cause-des-feux-faisant-rage-dans-la-region_6732168_3244.html"
+    },
+    {
+      "commune": "Martignas-sur-Jalle", "dept": "Gironde (33)", "lat": 44.8451, "lon": -0.8006,
+      "population": 8056, "statut": "évacuation préventive",
+      "annonce": "2026-07-25",
+      "source": "Le Monde",
+      "source_url": "https://www.lemonde.fr/planete/video/2026/07/25/video-sept-communes-de-la-gironde-evacuees-de-maniere-preventive-a-cause-des-feux-faisant-rage-dans-la-region_6732168_3244.html"
+    },
+    {
+      "commune": "Saint-Aubin-de-Médoc", "dept": "Gironde (33)", "lat": 44.9343, "lon": -0.7478,
+      "population": 7769, "statut": "évacuation préventive",
+      "annonce": "2026-07-25",
+      "source": "Le Monde",
+      "source_url": "https://www.lemonde.fr/planete/video/2026/07/25/video-sept-communes-de-la-gironde-evacuees-de-maniere-preventive-a-cause-des-feux-faisant-rage-dans-la-region_6732168_3244.html"
+    },
+    {
+      "commune": "Secteur de Pontevès", "dept": "Var (83)", "lat": 43.5509, "lon": 6.0687,
+      "population": null, "statut": "2 000 personnes évacuées, non réintégrées",
+      "annonce": "2026-07-25 (soir)",
+      "source": "Préfecture du Var via La Dépêche",
+      "source_url": "https://www.ladepeche.fr/2026/07/25/direct-incendies-les-feux-toujours-hors-de-controle-des-evacuations-dans-la-metropole-de-bordeaux-larmee-en-renfort-des-pompiers-13482939.php"
+    }
+  ]
+}

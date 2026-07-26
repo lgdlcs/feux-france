@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+"""Serveur local pour la carte des incendies en France.
+
+Récupère les détections thermiques satellites NASA FIRMS (flux publics 24h,
+mise à jour continue, sans clé API), filtre les points situés sur le
+territoire métropolitain (polygone précis, pas un simple rectangle) et les
+sert en JSON au frontend. Cache de 10 minutes pour ne pas surcharger FIRMS.
+"""
+
+import csv
+import io
+import json
+import math
+import threading
+import time
+import urllib.parse
+import urllib.request
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+from pathlib import Path
+
+PORT = 8741
+ROOT = Path(__file__).parent
+CACHE_TTL = 600  # secondes
+
+# Clustering des détections en "foyers"
+FOYER_GRID = 0.02        # grille de regroupement (degrés)
+FOYER_FINE_GRID = 0.00375  # ~375 m : empreinte pixel VIIRS pour l'estimation de surface
+FOYER_CELL_HA = 14.06    # ha couverts par une cellule fine (~375 m × 375 m)
+FOYER_MIN_POINTS = 3     # nb minimal de détections pour retenir un foyer
+FOYER_ACTIVE_HOURS = 6   # foyer "actif" si dernière détection < 6h
+FOYER_GEOCODE_MIN_N = 10  # géocode aussi les gros foyers même inactifs
+
+# Cache mémoire du reverse-geocoding, clé = cellule 0.02° arrondie, pour ne pas
+# rappeler geo.api.gouv.fr à chaque refresh.
+_geo_cache = {}
+_geo_lock = threading.Lock()
+
+FEEDS = [
+    {
+        "id": "viirs_snpp",
+        "label": "VIIRS Suomi-NPP (375 m)",
+        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Europe_24h.csv",
+    },
+    {
+        "id": "viirs_noaa20",
+        "label": "VIIRS NOAA-20 (375 m)",
+        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_Europe_24h.csv",
+    },
+    {
+        "id": "viirs_noaa21",
+        "label": "VIIRS NOAA-21 (375 m)",
+        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_Europe_24h.csv",
+    },
+    {
+        "id": "modis",
+        "label": "MODIS Aqua/Terra (1 km)",
+        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Europe_24h.csv",
+    },
+]
+
+# Pré-filtre grossier avant le test polygone (métropole + Corse)
+BBOX = (41.2, -5.6, 51.3, 9.9)  # lat_min, lon_min, lat_max, lon_max
+
+
+def load_france_rings():
+    geo = json.loads((ROOT / "metropole.geojson").read_text())
+    geom = geo["geometry"]
+    rings = []
+    if geom["type"] == "Polygon":
+        rings.append(geom["coordinates"][0])
+    else:  # MultiPolygon
+        for poly in geom["coordinates"]:
+            rings.append(poly[0])
+    return rings
+
+
+FRANCE_RINGS = load_france_rings()
+
+
+def point_in_ring(lon, lat, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i][0], ring[i][1]
+        xj, yj = ring[j][0], ring[j][1]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def in_france(lon, lat):
+    return any(point_in_ring(lon, lat, r) for r in FRANCE_RINGS)
+
+
+_cache = {"data": None, "ts": 0}
+_lock = threading.Lock()
+
+
+def normalize_confidence(raw):
+    """FIRMS: VIIRS = low/nominal/high, MODIS = 0-100."""
+    if raw in ("l", "low"):
+        return "faible"
+    if raw in ("n", "nominal"):
+        return "normale"
+    if raw in ("h", "high"):
+        return "élevée"
+    try:
+        v = int(raw)
+        return "faible" if v < 30 else ("normale" if v < 80 else "élevée")
+    except ValueError:
+        return "normale"
+
+
+def fetch_feed(feed):
+    req = urllib.request.Request(feed["url"], headers={"User-Agent": "feux-france-local/1.0"})
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        text = resp.read().decode("utf-8")
+    points = []
+    for row in csv.DictReader(io.StringIO(text)):
+        try:
+            lat = float(row["latitude"])
+            lon = float(row["longitude"])
+        except (KeyError, ValueError):
+            continue
+        if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
+            continue
+        if not in_france(lon, lat):
+            continue
+        acq_time = row["acq_time"].zfill(4)
+        points.append({
+            "lat": lat,
+            "lon": lon,
+            "acq_utc": f"{row['acq_date']}T{acq_time[:2]}:{acq_time[2:]}:00Z",
+            "frp": float(row.get("frp") or 0),
+            "confidence": normalize_confidence(str(row.get("confidence", "")).strip().lower()),
+            "satellite": feed["label"],
+            "source": feed["id"],
+            "daynight": row.get("daynight", ""),
+        })
+    return points
+
+
+def _parse_utc(s):
+    """'2026-07-26T14:30:00Z' -> epoch (float). Renvoie 0 si illisible."""
+    try:
+        return time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def reverse_geocode(lat, lon):
+    """Nom de la commune la plus proche via geo.api.gouv.fr.
+
+    Cache en mémoire par cellule 0.02° arrondie. Échec / timeout -> None.
+    """
+    key = (round(lat / FOYER_GRID), round(lon / FOYER_GRID))
+    with _geo_lock:
+        if key in _geo_cache:
+            return _geo_cache[key]
+    nom = None
+    try:
+        qs = urllib.parse.urlencode({"lat": f"{lat:.5f}", "lon": f"{lon:.5f}", "fields": "nom"})
+        url = f"https://geo.api.gouv.fr/communes?{qs}"
+        req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        if isinstance(data, list) and data:
+            nom = data[0].get("nom")
+    except Exception:
+        nom = None
+    with _geo_lock:
+        _geo_cache[key] = nom
+    return nom
+
+
+def cluster_foyers(points):
+    """Regroupe les détections en foyers (composantes connexes 8-connexité
+    sur une grille 0.02°). Ne conserve que les foyers de >= FOYER_MIN_POINTS
+    détections. Trie par nombre de détections décroissant."""
+    if not points:
+        return []
+
+    # Répartition des points par cellule 0.02°
+    cells = {}
+    for p in points:
+        c = (int(math.floor(p["lat"] / FOYER_GRID)), int(math.floor(p["lon"] / FOYER_GRID)))
+        cells.setdefault(c, []).append(p)
+
+    # Composantes connexes (8-connexité) sur les cellules occupées
+    remaining = set(cells)
+    components = []
+    while remaining:
+        seed = remaining.pop()
+        stack = [seed]
+        comp = [seed]
+        while stack:
+            cy, cx = stack.pop()
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dy == 0 and dx == 0:
+                        continue
+                    neigh = (cy + dy, cx + dx)
+                    if neigh in remaining:
+                        remaining.discard(neigh)
+                        stack.append(neigh)
+                        comp.append(neigh)
+        components.append(comp)
+
+    now = time.time()
+    foyers = []
+    fid = 0
+    for comp in components:
+        comp_points = [p for c in comp for p in cells[c]]
+        n = len(comp_points)
+        if n < FOYER_MIN_POINTS:
+            continue
+        fid += 1
+        lat_c = sum(p["lat"] for p in comp_points) / n
+        lon_c = sum(p["lon"] for p in comp_points) / n
+        utcs = [p["acq_utc"] for p in comp_points]
+        first_utc = min(utcs)
+        last_utc = max(utcs)
+        max_frp = max(p["frp"] for p in comp_points)
+        fine = {(int(math.floor(p["lat"] / FOYER_FINE_GRID)),
+                 int(math.floor(p["lon"] / FOYER_FINE_GRID))) for p in comp_points}
+        est_area_ha = round(len(fine) * FOYER_CELL_HA)
+        active = (now - _parse_utc(last_utc)) < FOYER_ACTIVE_HOURS * 3600
+        foyers.append({
+            "id": fid,
+            "lat": round(lat_c, 5),
+            "lon": round(lon_c, 5),
+            "n": n,
+            "first_utc": first_utc,
+            "last_utc": last_utc,
+            "max_frp": round(max_frp, 2),
+            "est_area_ha": est_area_ha,
+            "active": active,
+            "nom": None,
+            # Rétention temporaire des points de la composante (retirée avant
+            # le return pour rester JSON-sérialisable).
+            "_pts": comp_points,
+        })
+
+    foyers.sort(key=lambda f: f["n"], reverse=True)
+    # Réattribue des id stables selon l'ordre de tri
+    for i, f in enumerate(foyers, start=1):
+        f["id"] = i
+
+    # Tague chaque détection avec l'id définitif de son foyer (après tri), pour
+    # permettre au frontend de tracer l'emprise réelle (enveloppe convexe).
+    for f in foyers:
+        for p in f["_pts"]:
+            p["foyer_id"] = f["id"]
+        del f["_pts"]
+
+    # Reverse-geocoding limité aux foyers actifs ou >= FOYER_GEOCODE_MIN_N
+    for f in foyers:
+        if f["active"] or f["n"] >= FOYER_GEOCODE_MIN_N:
+            f["nom"] = reverse_geocode(f["lat"], f["lon"])
+
+    return foyers
+
+
+def build_payload():
+    all_points, feeds_status = [], []
+    for feed in FEEDS:
+        try:
+            pts = fetch_feed(feed)
+            all_points.extend(pts)
+            feeds_status.append({"id": feed["id"], "label": feed["label"], "ok": True, "count": len(pts)})
+        except Exception as exc:  # flux indisponible : on le signale, on ne l'invente pas
+            feeds_status.append({"id": feed["id"], "label": feed["label"], "ok": False, "error": str(exc)})
+    all_points.sort(key=lambda p: p["acq_utc"], reverse=True)
+    foyers = cluster_foyers(all_points)
+    return {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "window_hours": 24,
+        "feeds": feeds_status,
+        "count": len(all_points),
+        "points": all_points,
+        "foyers": foyers,
+    }
+
+
+def get_data():
+    with _lock:
+        if _cache["data"] is None or time.time() - _cache["ts"] > CACHE_TTL:
+            _cache["data"] = build_payload()
+            _cache["ts"] = time.time()
+        return _cache["data"]
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(ROOT / "public"), **kwargs)
+
+    def end_headers(self):
+        # Jamais de HTML/JS périmé côté navigateur : le fichier évolue souvent.
+        if not self.path.startswith("/api/"):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
+    def _send_json(self, obj, status=200):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.startswith("/api/fires"):
+            try:
+                self._send_json(get_data())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=502)
+        elif self.path.startswith("/api/situation"):
+            # Relecture disque à chaque requête (pas de cache) : mise à jour à chaud.
+            try:
+                evacuations = json.loads((ROOT / "evacuations.json").read_text())
+            except Exception:
+                evacuations = None
+            sit_path = ROOT / "situation.json"
+            situation, zones = None, []
+            if sit_path.exists():
+                try:
+                    situation = json.loads(sit_path.read_text())
+                    zones = situation.get("zones", [])
+                except Exception:
+                    pass
+            self._send_json({
+                "evacuations": evacuations,
+                "zones": zones,
+                "zones_updated": situation.get("updated") if situation else None,
+                "served_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
+        else:
+            super().do_GET()
+
+    def log_message(self, fmt, *args):
+        pass
+
+
+if __name__ == "__main__":
+    print(f"Carte des feux : http://localhost:{PORT}")
+    HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

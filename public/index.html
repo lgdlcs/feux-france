@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feux France — Veille satellite en temps réel</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0e11; --panel:#12161b; --panel2:#171c22; --line:#232b33;
+  --txt:#e8e4dc; --dim:#8b949e; --faint:#4d5760;
+  --fire:#ff4820; --ember:#ff8c1a; --warm:#ffc93c; --cool:#6b7684;
+  --ok:#3fd68f; --bad:#ff5470;
+  --panel-grad:linear-gradient(180deg,rgba(18,22,27,.97),rgba(11,14,17,.97));
+  --notice-bg:rgba(255,140,26,.06); --notice-line:rgba(255,140,26,.25);
+  --chip-on-bg:rgba(255,72,32,.14);
+  --tl-bg:rgba(11,14,17,.72); --tl-hatch:rgba(255,140,26,.14);
+  --mono:'IBM Plex Mono',monospace; --sans:'Archivo',sans-serif;
+}
+body.light{
+  --bg:#f2efe9; --panel:#faf8f4; --panel2:#ece8e0; --line:#d8d2c6;
+  --txt:#1d1a15; --dim:#5d564a; --faint:#978f80;
+  --fire:#e03400; --ember:#e07800; --warm:#c79a00; --cool:#8a94a3;
+  --ok:#1a9c62; --bad:#d42a52;
+  --panel-grad:linear-gradient(180deg,rgba(250,248,244,.97),rgba(242,239,233,.97));
+  --notice-bg:rgba(224,120,0,.07); --notice-line:rgba(224,120,0,.35);
+  --chip-on-bg:rgba(224,52,0,.1);
+  --tl-bg:rgba(250,248,244,.8); --tl-hatch:rgba(224,120,0,.16);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidden}
+#map{position:absolute;inset:0;background:var(--bg)}
+.leaflet-container{font-family:var(--sans)}
+
+/* fond de carte OSM-France : filtre sombre appliqué au SEUL pane du fond,
+   jamais aux marqueurs ni aux popups. Actif uniquement en thème sombre. */
+body:not(.light)[data-base="plan"] .leaflet-basemap-pane{
+  filter:invert(1) hue-rotate(180deg) saturate(.5) brightness(.9) contrast(.95);
+}
+
+/* sélecteur de fond de carte (façon Google Maps, en bas à gauche) */
+#base-picker{
+  position:absolute;left:352px;bottom:138px;z-index:1001;display:flex;gap:8px;
+  transition:left .25s ease;
+}
+#panel.closed ~ #base-picker{left:12px}
+.base-opt{
+  width:64px;border-radius:10px;overflow:hidden;cursor:pointer;
+  border:2px solid var(--line);background:var(--panel);
+  font-family:var(--mono);font-size:10px;color:var(--dim);text-align:center;
+  transition:.15s;
+}
+.base-opt:hover{color:var(--txt)}
+.base-opt.on{border-color:var(--fire);color:var(--fire)}
+.base-opt .th{height:40px;background-size:cover;background-position:center}
+.base-opt .lb{padding:3px 0 4px;background:var(--panel)}
+.base-opt[data-b="plan"] .th{background:linear-gradient(135deg,#dfeedd 0 40%,#f6f2e8 40% 70%,#cfe3f5 70%);position:relative}
+.base-opt[data-b="sat"] .th{background:linear-gradient(135deg,#24391f 0 45%,#3d5231 45% 75%,#1d2c45 75%)}
+.base-opt[data-b="topo"] .th{background:repeating-linear-gradient(115deg,#e8e0cc 0 6px,#d8cba8 6px 8px,#e8e0cc 8px 16px,#c8b990 16px 18px)}
+@media (max-width:720px){
+  #base-picker{left:12px;bottom:110px}
+  #panel.closed ~ #base-picker{left:12px}
+}
+
+/* ---------- panneau latéral ---------- */
+#panel{
+  position:absolute;top:0;left:0;bottom:0;width:340px;z-index:1000;
+  background:var(--panel-grad);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;
+  backdrop-filter:blur(6px);
+  transition:transform .25s ease;
+}
+#panel.closed{transform:translateX(-100%)}
+.fab{
+  background:var(--panel);border:1px solid var(--line);color:var(--txt);
+  width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+}
+#panel-toggle{position:absolute;top:12px;left:352px;z-index:1001;transition:left .25s ease}
+#panel.closed ~ #panel-toggle{left:12px}
+#theme-toggle{position:absolute;top:12px;left:396px;z-index:1001;transition:left .25s ease}
+#panel.closed ~ #theme-toggle{left:56px}
+
+header{padding:20px 20px 14px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:8px}
+.brand h1{
+  font-size:26px;font-weight:850;font-stretch:70%;letter-spacing:.5px;
+  text-transform:uppercase;line-height:1;
+}
+.brand h1 em{font-style:normal;color:var(--fire)}
+.live{
+  font-family:var(--mono);font-size:10px;color:var(--fire);
+  border:1px solid var(--notice-line);border-radius:3px;padding:2px 6px;
+  display:inline-flex;align-items:center;gap:5px;letter-spacing:.15em;
+}
+.live::before{
+  content:"";width:6px;height:6px;border-radius:50%;background:var(--fire);
+  animation:pulse 1.6s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.subtitle{margin-top:8px;font-size:12px;color:var(--dim);line-height:1.45}
+
+.scroll{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+section{padding:16px 20px;border-bottom:1px solid var(--line)}
+h2{
+  font-size:10px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:12px;font-family:var(--mono);
+}
+
+/* compteur */
+#bigcount{font-family:var(--mono);font-size:44px;font-weight:600;line-height:1;color:var(--txt)}
+#bigcount .unit{font-size:12px;color:var(--dim);font-weight:400;margin-left:6px}
+#updated{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px}
+#updated b{color:var(--txt);font-weight:500}
+
+/* cartes foyers actifs */
+.fcard{
+  display:flex;gap:10px;align-items:flex-start;padding:10px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  cursor:pointer;margin-bottom:8px;transition:.15s;
+}
+.fcard:hover{border-color:var(--fire)}
+.fcard .ico{font-size:18px;line-height:1.1}
+.fcard .body{flex:1;min-width:0}
+.fcard .nm{font-weight:700;font-size:13px;line-height:1.2}
+.fcard .meta{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px;line-height:1.55}
+
+/* cartes prévision 12 h (Open-Meteo) */
+.pcard{padding:11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-bottom:8px}
+.pcard .nm{font-weight:700;font-size:13px}
+.pcard .trend{font-size:12px;color:var(--txt);margin-top:5px;line-height:1.5}
+.pcard .nums{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.pcard .nums b{color:var(--ember);font-weight:600}
+.pcard .src{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:8px}
+
+/* badge prévision (près du compteur) */
+#fcast-badge{
+  display:none;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  color:var(--ember);border:1px solid var(--notice-line);background:var(--notice-bg);
+  border-radius:3px;padding:2px 7px;margin-top:10px;
+}
+#fcast-badge.on{display:inline-block}
+
+/* cartes situation officielle */
+.zcard{padding:11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-bottom:8px}
+.zcard .nm{font-weight:700;font-size:13px}
+.zcard .ha{font-family:var(--mono);font-size:12px;color:var(--ember);margin-top:3px}
+.moyens{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:9px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.moyens span{display:inline-flex;align-items:center;gap:4px}
+.zmeta{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:9px;line-height:1.7}
+.zmeta a{color:var(--dim)}
+
+/* communes évacuées */
+.evac-item{
+  display:flex;align-items:baseline;gap:8px;padding:8px 0;
+  border-bottom:1px solid var(--line);cursor:pointer;font-size:12px;
+}
+.evac-item:last-child{border-bottom:none}
+.evac-item:hover .cm{color:var(--fire)}
+.evac-item .cm{font-weight:600}
+.evac-item .dp{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.evac-item .stt{font-family:var(--mono);font-size:10px;color:var(--ember);margin-left:auto;white-space:nowrap}
+
+.empty{font-size:12px;color:var(--faint);font-style:italic;line-height:1.5}
+
+/* flux */
+.feed{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--dim);padding:4px 0}
+.feed .st{width:7px;height:7px;border-radius:50%;flex:none}
+.feed .st.ok{background:var(--ok)}
+.feed .st.bad{background:var(--bad)}
+.feed .n{margin-left:auto;color:var(--txt)}
+
+/* disclaimer */
+.notice{
+  font-size:11px;line-height:1.55;color:var(--dim);
+  background:var(--notice-bg);border:1px solid var(--notice-line);
+  border-radius:8px;padding:10px 12px;
+}
+.notice b{color:var(--ember);font-weight:600}
+.srcs{margin-top:10px;font-size:11px;color:var(--faint);line-height:1.7}
+.srcs a{color:var(--dim)}
+
+/* marqueurs personnalisés */
+.leaflet-div-icon{background:none;border:none}
+/* NE PAS mettre position:relative ici : ça écrase le position:absolute de
+   Leaflet (.leaflet-marker-icon) et les flammes s'empilent en flux normal,
+   d'où un décalage de 17px × rang du marqueur, visible au dézoom. */
+.foyer-icon{position:absolute}
+.foyer-flame{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  font-size:18px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));
+}
+.foyer-ring{
+  position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;
+  border-radius:50%;border:2px solid var(--fire);animation:ring 1.8s ease-out infinite;
+}
+@keyframes ring{0%{transform:scale(.45);opacity:.9}100%{transform:scale(1.7);opacity:0}}
+.evac-tri{
+  position:absolute;left:50%;top:0;transform:translateX(-50%);
+  width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;
+  border-bottom:19px solid var(--ember);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));
+}
+.evac-tri::after{
+  content:"!";position:absolute;left:-3px;top:6px;color:#fff;font-weight:800;font-size:11px;
+}
+
+/* popup */
+.leaflet-popup-content-wrapper{
+  background:var(--panel);color:var(--txt);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.35);
+}
+.leaflet-popup-tip{background:var(--panel);border:1px solid var(--line)}
+.leaflet-popup-content{margin:14px 16px;font-family:var(--mono);font-size:12px;line-height:1.7}
+.pp-t{font-family:var(--sans);font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.pp-t.recent{color:var(--fire)}
+.pp k{color:var(--faint);display:inline-block;width:120px;vertical-align:top}
+.pp a{color:var(--ember)}
+.pp .sep{border:none;border-top:1px solid var(--line);margin:9px 0}
+.pp .sub{font-family:var(--sans);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ember);margin-bottom:5px}
+.pp .arr{display:inline-block}
+
+/* frise chronologique pleine largeur (façon Windy) ; se cale sur le panneau */
+#timeline{
+  position:fixed;left:340px;right:0;bottom:0;z-index:1000;
+  height:64px;display:flex;align-items:center;gap:14px;
+  padding:0 18px 0 14px;
+  background:var(--tl-bg);border-top:1px solid var(--line);
+  backdrop-filter:blur(10px);transition:left .25s ease;
+}
+#panel.closed ~ #timeline{left:0}
+/* les contrôles Leaflet du bas remontent au-dessus du bandeau */
+.leaflet-bottom{bottom:64px}
+#tl-play{
+  width:40px;height:40px;flex:none;border:none;border-radius:50%;
+  background:var(--fire);color:#fff;font-size:15px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 10px rgba(0,0,0,.35);transition:filter .15s;
+}
+#tl-play:hover{filter:brightness(1.12)}
+#tl-track{position:relative;flex:1;height:46px;cursor:pointer;user-select:none;touch-action:none}
+/* zone future = prévision (hachures diagonales) */
+.tl-future{
+  position:absolute;top:0;bottom:0;pointer-events:none;
+  background:repeating-linear-gradient(-45deg,transparent 0 6px,var(--tl-hatch) 6px 8px);
+  border-left:1px solid var(--notice-line);
+}
+.tl-future .lb{
+  position:absolute;top:2px;left:6px;font-family:var(--mono);font-size:8px;
+  letter-spacing:.16em;color:var(--ember);opacity:.85;text-transform:uppercase;
+}
+/* micro-histogramme des détections passées */
+.tl-mbar{position:absolute;bottom:15px;background:var(--ember);opacity:.55;border-radius:1px 1px 0 0;pointer-events:none}
+/* graduations horaires / jours */
+.tl-tick{position:absolute;bottom:15px;width:1px;height:5px;background:var(--faint);pointer-events:none}
+.tl-tick.maj{height:8px;background:var(--dim)}
+.tl-hlabel{position:absolute;bottom:2px;font-family:var(--mono);font-size:9px;color:var(--dim);transform:translateX(-50%);pointer-events:none;white-space:nowrap}
+.tl-day{position:absolute;top:0;bottom:15px;width:1px;background:var(--line);pointer-events:none}
+.tl-dlabel{position:absolute;top:0;font-family:var(--mono);font-size:9px;font-weight:600;color:var(--txt);pointer-events:none;white-space:nowrap;letter-spacing:.02em}
+/* trait « maintenant » */
+.tl-now{position:absolute;top:0;bottom:15px;width:2px;background:var(--fire);pointer-events:none;box-shadow:0 0 6px var(--fire)}
+/* remplissage de progression + poignée */
+.tl-fill{position:absolute;top:15px;bottom:15px;left:0;background:var(--fire);opacity:.16;pointer-events:none;border-radius:2px}
+.tl-handle{
+  position:absolute;top:calc(50% + 1px);width:18px;height:18px;margin:-9px 0 0 -9px;
+  border-radius:50%;background:var(--fire);border:2px solid var(--bg);
+  box-shadow:0 1px 6px rgba(0,0,0,.5);pointer-events:none;z-index:3;
+}
+.tl-bubble{
+  position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
+  background:var(--panel);border:1px solid var(--fire);color:var(--txt);
+  font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;
+  white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4);
+}
+.tl-bubble.fut{border-color:var(--ember);color:var(--ember)}
+
+/* erreur / chargement */
+#error{
+  position:absolute;top:12px;right:12px;z-index:1100;display:none;
+  background:rgba(255,84,112,.12);border:1px solid var(--bad);color:var(--bad);
+  font-family:var(--mono);font-size:12px;padding:10px 14px;border-radius:8px;max-width:340px;
+}
+#loading{
+  position:absolute;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);flex-direction:column;gap:14px;transition:opacity .4s;
+}
+#loading.off{opacity:0;pointer-events:none}
+#loading .t{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.15em}
+.flame{width:40px;height:40px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+  background:conic-gradient(from 180deg,var(--fire),var(--ember),var(--warm),var(--fire));
+  animation:fl 1.2s ease-in-out infinite alternate}
+@keyframes fl{from{transform:rotate(-45deg) scale(.9)}to{transform:rotate(-45deg) scale(1.08)}}
+
+.leaflet-control-attribution{background:var(--panel)!important;color:var(--faint)!important;font-size:10px!important;opacity:.9}
+.leaflet-control-attribution a{color:var(--dim)!important}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--txt)!important;border-color:var(--line)!important}
+
+@media (max-width:720px){
+  #panel{width:min(85vw,320px)}
+  #panel-toggle{left:calc(min(85vw,320px) + 12px)}
+  #theme-toggle{left:calc(min(85vw,320px) + 56px)}
+  #panel.closed ~ #panel-toggle{left:12px}
+  #panel.closed ~ #theme-toggle{left:56px}
+  #timeline{left:0;gap:10px;padding:0 10px}
+  #panel.closed ~ #timeline{left:0}
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<aside id="panel">
+  <header>
+    <div class="brand">
+      <h1>Feux<em>·</em>France</h1>
+      <span class="live">DIRECT</span>
+    </div>
+    <p class="subtitle">Détections thermiques par satellites NASA sur les dernières 24 h, territoire métropolitain.</p>
+  </header>
+
+  <div class="scroll">
+    <section>
+      <div id="bigcount">—<span class="unit">détections</span></div>
+      <div id="updated">chargement…</div>
+      <span id="fcast-badge" title="Instant sélectionné dans le futur">PRÉVISION</span>
+    </section>
+
+    <section>
+      <h2>Foyers actifs</h2>
+      <div id="foyers-list"><div class="empty">Chargement…</div></div>
+    </section>
+
+    <section>
+      <h2>Situation officielle</h2>
+      <div id="zones-list"><div class="empty">Chargement…</div></div>
+    </section>
+
+    <section>
+      <h2>Prévision 12 h</h2>
+      <div id="forecast-list"><div class="empty">Prévisions en cours de récupération…</div></div>
+    </section>
+
+    <section>
+      <h2>Communes évacuées</h2>
+      <div id="evac-list"><div class="empty">Chargement…</div></div>
+    </section>
+
+    <section>
+      <h2>État des flux satellites</h2>
+      <div id="feeds"></div>
+    </section>
+
+    <section>
+      <div class="notice">
+        <b>Lire ces données correctement :</b> chaque point est une <b>anomalie thermique</b> détectée par satellite (pixel de 375 m à 1 km), publiée sous ~3 h après le passage. Ce n'est ni un périmètre officiel de feu, ni une garantie qu'un incendie est toujours actif. Certaines sources chaudes (industrie, torchères, soleil sur toits) peuvent créer de rares faux positifs. <b>Les moyens engagés et les évacuations proviennent des annonces des préfectures et de la presse, saisis manuellement ; la météo provient d'Open-Meteo.</b> Les <b>cônes de propagation et les prévisions 12 h</b> sont des estimations simplifiées déduites du vent prévu (Open-Meteo), <b>pas une modélisation officielle de propagation</b> : seules les consignes préfectorales font foi. En cas d'urgence : <b>appelez le 18 ou le 112</b>.
+      </div>
+      <div class="srcs">
+        Sources : <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA FIRMS</a> (VIIRS + MODIS) ·
+        <a href="https://meteofrance.com/meteo-des-forets" target="_blank" rel="noopener">Météo des forêts</a> ·
+        <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
+        cartographie <a href="https://www.openstreetmap.fr/" target="_blank" rel="noopener">OpenStreetMap France</a><br>
+        Actualisation automatique toutes les 10 min (feux et météo).
+      </div>
+    </section>
+  </div>
+</aside>
+<button id="panel-toggle" class="fab" title="Afficher / masquer le panneau">☰</button>
+<button id="theme-toggle" class="fab" title="Basculer clair / sombre">☀️</button>
+<div id="base-picker" title="Fond de carte">
+  <div class="base-opt on" data-b="plan"><div class="th"></div><div class="lb">Plan</div></div>
+  <div class="base-opt" data-b="sat"><div class="th"></div><div class="lb">Satellite</div></div>
+  <div class="base-opt" data-b="topo"><div class="th"></div><div class="lb">Relief</div></div>
+</div>
+
+<div id="timeline">
+  <button id="tl-play" title="Lecture / pause">▶</button>
+  <div id="tl-track" role="slider" aria-label="Curseur temporel" aria-valuemin="0" aria-valuemax="72"></div>
+</div>
+
+<div id="error"></div>
+<div id="loading"><div class="flame"></div><div class="t">ACQUISITION SATELLITE…</div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ============================================================
+   Carte
+   ============================================================ */
+const map = L.map('map', {zoomControl:true, attributionControl:true}).setView([46.6, 2.6], 6);
+map.zoomControl.setPosition('bottomright');
+
+/* Pane dédié au fond de carte pour pouvoir lui appliquer le filtre sombre
+   sans toucher aux marqueurs (markerPane) ni aux popups (popupPane). */
+map.createPane('basemap');
+map.getPane('basemap').style.zIndex = 200;
+
+/* Fonds de carte au choix (sélecteur façon Google Maps, en bas à gauche) */
+const BASE_LAYERS = {
+  plan: L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+    pane:'basemap', maxZoom:20, subdomains:'abc',
+    attribution:'&copy; OpenStreetMap France &amp; contributeurs · Feux : NASA FIRMS'}),
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    pane:'basemap', maxZoom:19,
+    attribution:'Imagerie &copy; Esri &amp; contributeurs · Feux : NASA FIRMS'}),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    pane:'basemap', maxZoom:17, subdomains:'abc',
+    attribution:'&copy; OpenTopoMap (CC-BY-SA) &amp; OSM · Feux : NASA FIRMS'}),
+};
+let currentBase = localStorage.getItem('ff-base') || 'plan';
+if (!BASE_LAYERS[currentBase]) currentBase = 'plan';
+function setBase(name){
+  Object.values(BASE_LAYERS).forEach(l => map.removeLayer(l));
+  BASE_LAYERS[name].addTo(map);
+  currentBase = name;
+  document.body.dataset.base = name;   // le filtre sombre ne s'applique qu'au plan
+  localStorage.setItem('ff-base', name);
+  document.querySelectorAll('.base-opt').forEach(b =>
+    b.classList.toggle('on', b.dataset.b === name));
+}
+setBase(currentBase);
+document.getElementById('base-picker').addEventListener('click', e => {
+  const b = e.target.closest('.base-opt');
+  if (b) setBase(b.dataset.b);
+});
+
+map.createPane('hull');                          // z fixe entre fond (200) et overlayPane (400)
+map.getPane('hull').style.zIndex = 350;
+const hullRenderer = L.canvas({padding:.4, pane:'hull'});
+const hullLayer  = L.layerGroup().addTo(map);   // emprises des foyers (SOUS les points)
+const renderer   = L.canvas({padding:.4});
+const pointLayer = L.layerGroup().addTo(map);   // détections (canvas, overlayPane)
+const coneLayer  = L.layerGroup().addTo(map);   // cônes de propagation probable (au-dessus des points)
+const foyerLayer = L.layerGroup().addTo(map);   // 🔥 foyers actifs (markerPane, au-dessus)
+const evacLayer  = L.layerGroup().addTo(map);   // ⚠ communes évacuées
+
+/* ============================================================
+   Thème
+   ============================================================ */
+let theme = localStorage.getItem('ff-theme') || 'dark';
+function applyTheme(){
+  document.body.classList.toggle('light', theme === 'light');
+  document.getElementById('theme-toggle').textContent = theme === 'light' ? '🌙' : '☀️';
+  render();          // recolore les détections (couleurs via variables CSS)
+}
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  theme = theme === 'light' ? 'dark' : 'light';
+  localStorage.setItem('ff-theme', theme);
+  applyTheme();
+});
+
+/* ============================================================
+   État
+   ============================================================ */
+let allPoints = [];        // détections
+let foyers    = [];        // foyers agrégés
+let feedsMeta = [];        // flux satellites
+let situation = {evac:[], evacUpdated:null, zones:[]};
+let meteoByFoyer = {};     // id -> current météo Open-Meteo
+let forecastByFoyer = {};  // id -> hourly (12 h) Open-Meteo
+let meteoFetchedAt = null; // Date de la dernière récupération météo
+let foyerMarkers = {};     // id -> marker (reconstruit à chaque render)
+
+const HOUR = 3.6e6, STEP_MS = 30 * 60 * 1000;
+// Fenêtre de la frise : maintenant−24 h (val 0) à maintenant+12 h (val 72).
+// val 48 = maintenant (mode live). Pas de 30 min.
+const SLIDER_MAX = 72, SLIDER_NOW = 48;
+let sliderVal = SLIDER_NOW;
+let playing = false, playTimer = null;
+
+/* ============================================================
+   Formatage
+   ============================================================ */
+const fmtHM    = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', hour:'2-digit', minute:'2-digit'});
+const fmtStamp = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+const fmtDate  = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', weekday:'short', day:'numeric', month:'short'});
+
+function ago(ms){
+  if (!isFinite(ms) || ms < 0) return '';
+  const m = Math.round(ms / 60000);
+  if (m < 60) return 'il y a ' + m + ' min';
+  return 'il y a ' + (ms / HOUR).toFixed(1).replace('.', ',') + ' h';
+}
+const CARD = ['N','NE','E','SE','S','SO','O','NO'];
+function cardinal(deg){ return CARD[Math.round(((deg % 360) + 360) % 360 / 45) % 8]; }
+function windArrow(deg){                 // flèche pointant dans le sens du vent (vers où il souffle)
+  const flow = (deg + 180) % 360;
+  return `<span class="arr" style="transform:rotate(${flow}deg)">↑</span>`;
+}
+function host(url){ try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e){ return url; } }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function nc(v, suffix){ return v == null ? 'n.c.' : (v + (suffix || '')); }
+
+/* Distance Haversine en km */
+function distKm(la1, lo1, la2, lo2){
+  const R = 6371, r = Math.PI / 180;
+  const dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
+  const a = Math.sin(dLa/2)**2 + Math.cos(la1*r) * Math.cos(la2*r) * Math.sin(dLo/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function nearestZone(f){
+  let best = null, bd = 30;   // seuil 30 km
+  situation.zones.forEach(z => {
+    if (z.lat == null || z.lon == null) return;
+    const d = distKm(f.lat, f.lon, z.lat, z.lon);
+    if (d <= bd) { bd = d; best = z; }
+  });
+  return best;
+}
+
+function colors(){
+  const s = getComputedStyle(document.body);
+  return {
+    fire: s.getPropertyValue('--fire').trim(),
+    ember:s.getPropertyValue('--ember').trim(),
+    warm: s.getPropertyValue('--warm').trim(),
+    cool: s.getPropertyValue('--cool').trim(),
+  };
+}
+function radius(frp){ return Math.max(4, Math.min(15, 3 + Math.sqrt(Math.max(frp || 0, 0)) * 1.6)); }
+
+/* Instant T sélectionné (ms). SLIDER_NOW = maintenant ; peut dépasser
+   Date.now() jusqu'à +12 h (partie « prévision » de la frise). */
+function currentT(){ return Date.now() - (SLIDER_NOW - sliderVal) * STEP_MS; }
+function isLive(){ return sliderVal === SLIDER_NOW; }
+function isFuture(){ return sliderVal > SLIDER_NOW; }
+
+/* ============================================================
+   Rendu carte (détections + foyers) — dépend de T
+   ============================================================ */
+function render(){
+  const now = Date.now(), T = currentT(), c = colors();
+  const future = isFuture();
+  hullLayer.clearLayers();
+  pointLayer.clearLayers();
+  foyerLayer.clearLayers();
+  foyerMarkers = {};
+
+  /* --- détections visibles : fenêtre glissante [T-24h, T], couleurs relatives à T ---
+     (les fichiers FIRMS peuvent contenir jusqu'à ~48 h : on coupe strictement à 24 h).
+     En mode PRÉVISION (T > maintenant) on fige les 24 dernières heures réelles :
+     aucune détection future n'existe, on ne fait pas glisser la fenêtre. */
+  const winEnd = future ? now : T;
+  const visible = allPoints.filter(p => {
+    const t = Date.parse(p.acq_utc);
+    return t <= winEnd && t > winEnd - 24 * HOUR;
+  });
+
+  /* --- emprise réelle des foyers : enveloppe convexe des détections visibles ---
+     (tracée AVANT les points, via son propre renderer, pour rester dessous) */
+  const ptsByFoyer = {};
+  visible.forEach(p => {
+    if (p.foyer_id == null) return;
+    (ptsByFoyer[p.foyer_id] = ptsByFoyer[p.foyer_id] || []).push(p);
+  });
+  foyers.forEach(f => {
+    if (!foyerEligible(f, T)) return;
+    const fp = ptsByFoyer[f.id];
+    if (!fp || fp.length < 3) return;
+    const ring = convexHull(fp);
+    if (!ring) return;
+    L.polygon(ring, {
+      renderer: hullRenderer, color: c.fire, weight: 1, opacity: .5,
+      fillColor: c.fire, fillOpacity: .10, interactive: false,
+    }).addTo(hullLayer);
+  });
+
+  /* --- détections : quand T est dans le futur, les détections connues sont
+     atténuées (on n'invente aucune détection future) --- */
+  let shown = 0;
+  const atten = future ? .55 : 1;
+  visible.slice().sort((a, b) => Date.parse(a.acq_utc) - Date.parse(b.acq_utc)).forEach(p => {
+    const a = (T - Date.parse(p.acq_utc)) / HOUR;      // âge relatif à T
+    const col = a < 3 ? c.fire : a < 6 ? c.ember : a < 12 ? c.warm : c.cool;
+    const recent = a < 3 && !future;
+    const realAge = now - Date.parse(p.acq_utc);
+    L.circleMarker([p.lat, p.lon], {
+      renderer, radius: radius(p.frp),
+      color: recent ? (theme === 'light' ? '#7a1500' : '#ffd9cf') : col,
+      weight: recent ? 1.5 : .8,
+      fillColor: col, fillOpacity: (recent ? .95 : .72) * atten,
+    }).bindPopup(`
+      <div class="pp">
+        <div class="pp-t ${recent ? 'recent' : ''}">${recent ? '🔥 Détection récente' : 'Détection thermique'}</div>
+        <k>Détectée le</k>${esc(fmtStamp.format(new Date(p.acq_utc)))} (Paris)<br>
+        <k>Ancienneté</k>${esc(ago(realAge))}<br>
+        <k>Satellite</k>${esc(p.satellite || 'n/d')}<br>
+        <k>Confiance</k>${esc(p.confidence || 'n/d')}<br>
+        <k>Puissance</k>${p.frp != null ? p.frp.toFixed(1) + ' MW (FRP)' : 'n/d'}<br>
+        <k>Passage</k>${p.daynight === 'N' ? 'nocturne' : 'diurne'}<br>
+        <a href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank" rel="noopener">Voir la position exacte →</a>
+      </div>`).addTo(pointLayer);
+    shown++;
+  });
+
+  /* --- foyers actifs 🔥 --- */
+  foyers.forEach(f => {
+    if (!foyerEligible(f, T)) return;
+    const mk = L.marker([f.lat, f.lon], {
+      icon: L.divIcon({
+        className:'foyer-icon',
+        html:'<span class="foyer-ring"></span><span class="foyer-flame">🔥</span>',
+        iconSize:[34, 34], iconAnchor:[17, 17], popupAnchor:[0, -14],
+      }),
+      zIndexOffset: 1000,
+    }).bindPopup(foyerPopup(f, now)).addTo(foyerLayer);
+    foyerMarkers[f.id] = mk;
+  });
+
+  /* --- cônes de propagation probable (dépendent de l'heure T sélectionnée) --- */
+  drawCones(now, T);
+
+  document.getElementById('bigcount').innerHTML =
+    shown + '<span class="unit">détection' + (shown > 1 ? 's' : '') + ' à cet instant</span>';
+  document.getElementById('fcast-badge').classList.toggle('on', future);
+
+  renderTimeline(now, T);
+}
+
+/* Foyer affiché si first_utc <= T et activité proche de T (< 6 h).
+   En live : on suit le drapeau active du serveur.
+   En scrub : on ne dispose que de first_utc/last_utc (pas du détail des
+   détections), on considère donc le foyer présent si sa fenêtre d'activité
+   recouvre [T-6h, T]. */
+function foyerEligible(f, T){
+  const first = Date.parse(f.first_utc), last = Date.parse(f.last_utc);
+  if (isLive()) return !!f.active;
+  if (isFuture()){
+    // Mode prévision : on garde visibles sur tout l'horizon +12 h les foyers
+    // actifs autour de maintenant (sinon la carte se vide au-delà de +6 h).
+    const now = Date.now();
+    return first <= now && last >= now - 6 * HOUR;
+  }
+  return first <= T && last >= T - 6 * HOUR;
+}
+
+function foyerPopup(f, now){
+  const title = f.nom ? 'Foyer de ' + esc(f.nom)
+                      : 'Foyer ' + f.lat.toFixed(3) + ', ' + f.lon.toFixed(3);
+  const last = Date.parse(f.last_utc);
+  let html = `<div class="pp"><div class="pp-t recent">🔥 ${title}</div>
+    <k>Détections 24 h</k>${f.n != null ? f.n : 'n/d'}<br>
+    <k>Dernière détection</k>${isFinite(last) ? esc(fmtStamp.format(new Date(last))) + ' — ' + esc(ago(now - last)) : 'n/d'}<br>
+    <k>Empreinte satellite</k>${f.est_area_ha != null ? Math.round(f.est_area_ha) + ' ha' : 'n/d'}<br>
+    <k>FRP max</k>${f.max_frp != null ? f.max_frp.toFixed(1) + ' MW' : 'n/d'}<br>
+    <span style="color:var(--faint);font-size:11px">Empreinte estimée depuis les pixels satellite, non officielle.</span>`;
+
+  const m = meteoByFoyer[f.id];
+  if (m){
+    html += `<hr class="sep"><div class="sub">Météo en direct</div>
+      <k>Température</k>${Math.round(m.temperature_2m)} °C<br>
+      <k>Humidité</k>${Math.round(m.relative_humidity_2m)} %<br>
+      <k>Vent</k>${Math.round(m.wind_speed_10m)} km/h · rafales ${Math.round(m.wind_gusts_10m)} km/h<br>
+      <k>Direction</k>${windArrow(m.wind_direction_10m)} de ${cardinal(m.wind_direction_10m)}`;
+  }
+
+  const z = nearestZone(f);
+  if (z){
+    const mo = z.moyens || {};
+    html += `<hr class="sep"><div class="sub">Chiffres officiels — ${esc(z.nom || 'zone')}${z.dept ? ' (' + esc(z.dept) + ')' : ''}</div>
+      <k>Surface officielle</k>${nc(z.hectares, ' ha')}<br>
+      <k>Pompiers</k>${nc(mo.pompiers)}<br>
+      <k>Militaires</k>${nc(mo.militaires)}<br>
+      <k>Canadair</k>${nc(mo.canadairs)}<br>
+      <k>Dash</k>${nc(mo.dash)}<br>
+      <k>Hélicoptères</k>${nc(mo.helicopteres)}<br>
+      <k>A400M</k>${nc(mo.a400m)}<br>`;
+    if (z.sources && z.sources.length){
+      html += `<k>Sources</k>` + z.sources.map(s =>
+        `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.titre || host(s.url))}</a>`).join(' · ') + '<br>';
+    }
+    if (z.maj) html += `<k>Mise à jour</k>${esc(z.maj)}`;
+  }
+  html += '</div>';
+  return html;
+}
+
+/* ============================================================
+   Géométrie : emprise des foyers & cônes de propagation
+   ============================================================ */
+/* Enveloppe convexe (monotone chain d'Andrew). pts : [{lat,lon}] ; on
+   travaille dans le plan (lon=x, lat=y) puis on renvoie un anneau [lat,lon]. */
+function convexHull(pts){
+  if (pts.length < 3) return null;
+  const P = pts.map(p => [p.lon, p.lat]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lower = [];
+  for (const p of P){ while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = P.length-1; i >= 0; i--){ const p = P[i]; while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
+  lower.pop(); upper.pop();
+  const hull = lower.concat(upper);
+  if (hull.length < 3) return null;
+  return hull.map(h => [h[1], h[0]]);
+}
+
+/* Index horaire (0..11) dans la prévision correspondant à l'instant T.
+   T <= maintenant -> conditions actuelles (index 0). */
+function forecastIndex(now, T){
+  if (T <= now) return 0;
+  return Math.max(0, Math.min(11, Math.round((T - now) / HOUR)));
+}
+
+/* Éventail depuis le centroïde, ouvert vers (windDir+180), demi-angle 30°. */
+function coneRing(lat, lon, windDir, spd){
+  const prop = (((windDir + 180) % 360) + 360) % 360;
+  const Lkm = Math.min(6, 1 + 0.08 * spd);
+  const half = 30, N = 7, rad = Math.PI / 180;
+  const kmLat = 111, kmLon = 111 * Math.cos(lat * rad);
+  const ring = [[lat, lon]];
+  for (let i = 0; i <= N; i++){
+    const b = (prop - half + (2 * half) * i / N) * rad;   // relèvement, 0 = nord
+    ring.push([lat + Math.cos(b) * Lkm / kmLat, lon + Math.sin(b) * Lkm / kmLon]);
+  }
+  return ring;
+}
+
+function drawCones(now, T){
+  coneLayer.clearLayers();
+  const idx = forecastIndex(now, T), amber = colors().ember;
+  foyers.forEach(f => {
+    if (!foyerEligible(f, T)) return;
+    const fc = forecastByFoyer[f.id];
+    if (!fc || !fc.wind_direction_10m) return;
+    const dir = fc.wind_direction_10m[idx], spd = fc.wind_speed_10m[idx];
+    if (dir == null || spd == null) return;
+    const ring = coneRing(f.lat, f.lon, dir, spd);
+    if (!ring) return;
+    const prop = (((dir + 180) % 360) + 360) % 360;
+    L.polygon(ring, {
+      color: amber, weight: 1.2, opacity: .85, dashArray: '4 4',
+      fillColor: amber, fillOpacity: .08, interactive: true,
+    }).bindTooltip(
+      "Direction probable de propagation d'après le vent prévu (Open-Meteo) — estimation simplifiée, non officielle. "
+      + 'Vers ' + cardinal(prop) + ' · vent ' + Math.round(spd) + ' km/h.',
+      {sticky: true}
+    ).addTo(coneLayer);
+  });
+}
+
+/* ============================================================
+   Frise chronologique (pleine largeur, façon Windy)
+   Fenêtre : maintenant−24 h (val 0) → maintenant+12 h (val 72).
+   ============================================================ */
+const fmtTlDay  = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', weekday:'short', day:'numeric'});
+const fmtTlHour = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', hour:'numeric', hourCycle:'h23'});
+function parisHour(t){ return parseInt(fmtTlHour.format(t), 10); }
+function bubbleText(T){ return fmtTlDay.format(new Date(T)) + ' · ' + fmtHM.format(new Date(T)).replace(':', 'h'); }
+
+function renderTimeline(now, T){
+  const track = document.getElementById('tl-track');
+  const start = now - 24 * HOUR, end = now + 12 * HOUR, span = end - start;
+  const pct = t => (t - start) / span * 100;
+  track.setAttribute('aria-valuenow', sliderVal);
+
+  // histogramme : détections par heure sur les 24 h passées
+  const counts = new Array(24).fill(0);
+  allPoints.forEach(p => {
+    const hAgo = Math.floor((now - Date.parse(p.acq_utc)) / HOUR);
+    if (hAgo >= 0 && hAgo < 24) counts[23 - hAgo]++;
+  });
+  const cmax = Math.max(1, ...counts);
+
+  let html = '';
+  const fx = pct(now);
+  // zone future = prévision (hachures)
+  html += `<div class="tl-future" style="left:${fx}%;width:${100 - fx}%"><span class="lb">Prévision</span></div>`;
+
+  // micro-barres de l'histogramme (bloc i couvre [now-(24-i)h, now-(23-i)h])
+  for (let i = 0; i < 24; i++){
+    if (!counts[i]) continue;
+    const l = pct(now - (24 - i) * HOUR), w = pct(now - (23 - i) * HOUR) - l;
+    const hgt = 3 + Math.round(counts[i] / cmax * 22);
+    html += `<div class="tl-mbar" style="left:${l}%;width:${Math.max(w - 0.3, 0.4)}%;height:${hgt}px"></div>`;
+  }
+
+  // graduations horaires + séparateurs de jours
+  for (let t = Math.ceil(start / HOUR) * HOUR; t <= end; t += HOUR){
+    const ph = parisHour(t), x = pct(t);
+    if (ph === 0){
+      html += `<div class="tl-day" style="left:${x}%"></div>`;
+      html += `<div class="tl-dlabel" style="left:${x}%;transform:translateX(3px)">${fmtTlDay.format(t)}</div>`;
+    } else {
+      const maj = ph % 3 === 0;
+      html += `<div class="tl-tick${maj ? ' maj' : ''}" style="left:${x}%"></div>`;
+      if (maj) html += `<div class="tl-hlabel" style="left:${x}%">${ph}h</div>`;
+    }
+  }
+  // libellé du jour au bord gauche
+  html += `<div class="tl-dlabel" style="left:0;transform:translateX(3px)">${fmtTlDay.format(start)}</div>`;
+
+  // trait « maintenant », remplissage de progression, poignée
+  const tx = pct(T);
+  html += `<div class="tl-now" style="left:${fx}%"></div>`;
+  html += `<div class="tl-fill" style="width:${Math.max(0, tx)}%"></div>`;
+  html += `<div class="tl-handle" style="left:${tx}%"></div>`;
+  html += `<div class="tl-bubble${isFuture() ? ' fut' : ''}" style="left:${Math.max(4, Math.min(96, tx))}%">`
+        + (isLive() ? 'MAINTENANT' : esc(bubbleText(T))) + '</div>';
+  track.innerHTML = html;
+}
+
+function setSlider(v){
+  sliderVal = Math.max(0, Math.min(SLIDER_MAX, v));
+  render();
+}
+function startPlay(){
+  if (sliderVal >= SLIDER_MAX) setSlider(0);      // au bout : relance depuis le début
+  playing = true;
+  document.getElementById('tl-play').textContent = '⏸';
+  playTimer = setInterval(() => {
+    if (sliderVal >= SLIDER_MAX){ stopPlay(); return; }   // stop en fin de fenêtre
+    setSlider(sliderVal + 1);
+  }, 600);
+}
+function stopPlay(){
+  playing = false;
+  document.getElementById('tl-play').textContent = '▶';
+  clearInterval(playTimer);
+}
+document.getElementById('tl-play').addEventListener('click', () => playing ? stopPlay() : startPlay());
+
+/* Drag / clic direct sur la piste */
+const tlTrack = document.getElementById('tl-track');
+let tlDragging = false;
+function tlPick(clientX){
+  const r = tlTrack.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  setSlider(Math.round(frac * SLIDER_MAX));
+}
+tlTrack.addEventListener('pointerdown', e => {
+  if (playing) stopPlay();
+  tlDragging = true;
+  try { tlTrack.setPointerCapture(e.pointerId); } catch(_){}
+  tlPick(e.clientX);
+});
+tlTrack.addEventListener('pointermove', e => { if (tlDragging) tlPick(e.clientX); });
+tlTrack.addEventListener('pointerup',   e => { tlDragging = false; try { tlTrack.releasePointerCapture(e.pointerId); } catch(_){} });
+tlTrack.addEventListener('pointercancel', () => { tlDragging = false; });
+
+/* ============================================================
+   Panneau latéral
+   ============================================================ */
+function activeFoyersSorted(){
+  return foyers.filter(f => f.active)
+    .sort((a, b) => (b.est_area_ha || 0) - (a.est_area_ha || 0) || (b.max_frp || 0) - (a.max_frp || 0));
+}
+function renderFoyersPanel(){
+  const box = document.getElementById('foyers-list');
+  const list = activeFoyersSorted();
+  if (!list.length){ box.innerHTML = '<div class="empty">Aucun foyer actif détecté sur les dernières heures.</div>'; return; }
+  box.innerHTML = list.map(f => {
+    const nm = f.nom ? 'Foyer de ' + esc(f.nom) : 'Foyer ' + f.lat.toFixed(3) + ', ' + f.lon.toFixed(3);
+    const m = meteoByFoyer[f.id];
+    const meteoLine = m
+      ? `<br>🌬 ${Math.round(m.wind_speed_10m)} km/h · rafales ${Math.round(m.wind_gusts_10m)} km/h`
+      : '';
+    return `<div class="fcard" data-id="${esc(f.id)}">
+      <div class="ico">🔥</div>
+      <div class="body">
+        <div class="nm">${nm}</div>
+        <div class="meta">${f.n != null ? f.n : '?'} détection${f.n > 1 ? 's' : ''} / 24 h`
+        + (f.est_area_ha != null ? ` · ~${Math.round(f.est_area_ha)} ha estimés` : '')
+        + meteoLine + `</div>
+      </div></div>`;
+  }).join('');
+  box.querySelectorAll('.fcard').forEach(el => el.addEventListener('click', () => {
+    const f = foyers.find(x => String(x.id) === el.dataset.id); if (!f) return;
+    map.setView([f.lat, f.lon], 11);
+    const mk = foyerMarkers[f.id];
+    if (mk) mk.openPopup();
+  }));
+}
+function renderZonesPanel(){
+  const box = document.getElementById('zones-list');
+  if (!situation.zones.length){ box.innerHTML = '<div class="empty">Aucune zone documentée par les autorités pour l\'instant.</div>'; return; }
+  box.innerHTML = situation.zones.map(z => {
+    const mo = z.moyens || {};
+    const srcs = (z.sources && z.sources.length)
+      ? z.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.titre || host(s.url))}</a>`).join(' · ')
+      : 'n.c.';
+    return `<div class="zcard">
+      <div class="nm">${esc(z.nom || 'Zone')}${z.dept ? ' <span style="color:var(--faint);font-family:var(--mono);font-size:11px">(' + esc(z.dept) + ')</span>' : ''}</div>
+      <div class="ha">${nc(z.hectares, ' ha')} officiels</div>
+      <div class="moyens">
+        <span>🚒 ${nc(mo.pompiers)}</span>
+        <span>🪖 ${nc(mo.militaires)}</span>
+        <span>✈️ ${nc(mo.canadairs)} Canadair</span>
+        <span>✈️ ${nc(mo.dash)} Dash</span>
+        <span>🚁 ${nc(mo.helicopteres)}</span>
+        <span>✈️ ${nc(mo.a400m)} A400M</span>
+      </div>
+      <div class="zmeta">màj ${esc(z.maj || 'n.c.')} · ${srcs}</div>
+    </div>`;
+  }).join('');
+}
+
+/* Moyenne circulaire de directions (degrés) et écart angulaire */
+function circularMeanDeg(arr){
+  let sx = 0, sy = 0, n = 0;
+  arr.forEach(d => { if (d == null) return; const r = d * Math.PI / 180; sx += Math.cos(r); sy += Math.sin(r); n++; });
+  if (!n) return null;
+  return ((Math.atan2(sy, sx) * 180 / Math.PI) + 360) % 360;
+}
+function angDiff(a, b){ const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+
+/* Prévision 12 h par foyer actif nommé — phrases factuelles, source Open-Meteo. */
+function renderForecastPanel(){
+  const box = document.getElementById('forecast-list');
+  const list = activeFoyersSorted().filter(f => f.nom && forecastByFoyer[f.id]);
+  if (!list.length){
+    box.innerHTML = '<div class="empty">Aucune prévision disponible pour l\'instant.</div>';
+    return;
+  }
+  const fetched = meteoFetchedAt ? fmtHM.format(meteoFetchedAt) : 'n.c.';
+  const avg = a => a.reduce((x, y) => x + (y || 0), 0) / a.length;
+  box.innerHTML = list.map(f => {
+    const fc = forecastByFoyer[f.id];
+    const g = fc.wind_gusts_10m, s = fc.wind_speed_10m, d = fc.wind_direction_10m,
+          tp = fc.temperature_2m, hu = fc.relative_humidity_2m, tm = fc.time;
+    // pic de rafales + son heure
+    let gi = 0; for (let i = 1; i < g.length; i++) if ((g[i] || 0) > (g[gi] || 0)) gi = i;
+    const gustHour = (tm && tm[gi]) ? tm[gi].slice(11, 13) : '?';
+    // tendance : moyenne 3 premières vs 3 dernières heures
+    const s0 = avg(s.slice(0, 3)), s1 = avg(s.slice(-3));
+    let trend = 'stable';
+    if (s1 - s0 > 5) trend = 'forcissant';
+    else if (s0 - s1 > 5) trend = 'mollissant';
+    // rotation éventuelle
+    const d0 = circularMeanDeg(d.slice(0, 3)), d1 = circularMeanDeg(d.slice(-3));
+    let rot = '';
+    if (d0 != null && d1 != null && angDiff(d0, d1) > 30)
+      rot = ' · vent tournant ' + cardinal(d0) + ' → ' + cardinal(d1);
+    const tpv = tp.filter(v => v != null), huv = hu.filter(v => v != null);
+    const tmax = tpv.length ? Math.round(Math.max(...tpv)) + ' °C' : 'n.c.';
+    const hmin = huv.length ? Math.round(Math.min(...huv)) + ' %' : 'n.c.';
+    const gpic = Number.isFinite(g[gi]) ? Math.round(g[gi]) + ' km/h' : 'n.c.';
+    return `<div class="pcard">
+      <div class="nm">Foyer de ${esc(f.nom)}</div>
+      <div class="trend">Vent ${trend}, rafales jusqu'à <b style="color:var(--ember)">${gpic}</b> vers ${esc(gustHour)} h${esc(rot)}.</div>
+      <div class="nums">
+        <span>🌡 max <b>${tmax}</b></span>
+        <span>💧 min <b>${hmin}</b></span>
+        <span>🌬 ${Math.round(s0)} → ${Math.round(s1)} km/h</span>
+      </div>
+      <div class="src">Prévisions Open-Meteo · récupéré à ${esc(fetched)}</div>
+    </div>`;
+  }).join('');
+}
+function renderEvacPanel(){
+  const box = document.getElementById('evac-list');
+  if (!situation.evac.length){ box.innerHTML = '<div class="empty">Aucune évacuation signalée pour l\'instant.</div>'; return; }
+  box.innerHTML = situation.evac.map((e, i) => `
+    <div class="evac-item" data-i="${i}">
+      <span class="cm">${esc(e.commune || '—')}</span>
+      <span class="dp">${esc(e.dept || '')}</span>
+      <span class="stt">${esc(e.statut || '')}</span>
+    </div>`).join('');
+  box.querySelectorAll('.evac-item').forEach(el => el.addEventListener('click', () => {
+    const e = situation.evac[+el.dataset.i]; if (!e || e.lat == null || e.lon == null) return;
+    map.setView([e.lat, e.lon], 11);
+  }));
+}
+function renderFeeds(){
+  document.getElementById('feeds').innerHTML = feedsMeta.map(f => `
+    <div class="feed">
+      <span class="st ${f.ok ? 'ok' : 'bad'}"></span>${esc(f.label)}
+      <span class="n">${f.ok ? f.count : 'indisponible'}</span>
+    </div>`).join('') || '<div class="empty">Aucun flux.</div>';
+}
+
+/* ============================================================
+   Marqueurs d'évacuation (indépendants de la frise)
+   ============================================================ */
+function renderEvacMarkers(){
+  evacLayer.clearLayers();
+  situation.evac.forEach(e => {
+    if (e.lat == null || e.lon == null) return;
+    const src = e.source_url
+      ? `<br><a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source || 'source')} →</a>`
+      : (e.source ? `<br><span style="color:var(--faint)">${esc(e.source)}</span>` : '');
+    L.marker([e.lat, e.lon], {
+      icon: L.divIcon({
+        className:'evac-icon', html:'<span class="evac-tri"></span>',
+        iconSize:[22, 20], iconAnchor:[11, 19], popupAnchor:[0, -16],
+      }),
+      zIndexOffset: 1200,
+    }).bindPopup(`
+      <div class="pp">
+        <div class="pp-t">⚠ ${esc(e.commune || 'Commune')}</div>
+        <k>Département</k>${esc(e.dept || 'n.c.')}<br>
+        <k>Statut</k>${esc(e.statut || 'n.c.')}<br>
+        <k>Annonce</k>${esc(e.annonce || 'n.c.')}<br>
+        <k>Population</k>${e.population != null ? e.population : 'n.c.'}${src}
+      </div>`).addTo(evacLayer);
+  });
+}
+
+/* ============================================================
+   Chargement des données
+   ============================================================ */
+async function loadFires(){
+  try{
+    const r = await fetch('/api/fires');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    allPoints = Array.isArray(d.points) ? d.points : [];
+    foyers    = Array.isArray(d.foyers) ? d.foyers : [];
+    feedsMeta = Array.isArray(d.feeds)  ? d.feeds  : [];
+    renderFeeds();
+    document.getElementById('updated').innerHTML =
+      'Actualisé à <b>' + esc(fmtHM.format(new Date(d.fetched_at_utc))) + '</b> · fenêtre 24 h glissante';
+    document.getElementById('error').style.display = 'none';
+    renderFoyersPanel();
+    render();
+    loadMeteo();                     // météo dépend des foyers fraîchement chargés
+  }catch(e){
+    const el = document.getElementById('error');
+    el.textContent = 'Données momentanément indisponibles (' + e.message + '). Nouvelle tentative dans 10 min — aucune donnée approximative affichée.';
+    el.style.display = 'block';
+  }finally{
+    document.getElementById('loading').classList.add('off');
+  }
+}
+
+async function loadSituation(){
+  try{
+    const r = await fetch('/api/situation');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    situation.evac        = (d.evacuations && Array.isArray(d.evacuations.evacuations)) ? d.evacuations.evacuations : [];
+    situation.evacUpdated = d.evacuations ? d.evacuations.updated : null;
+    situation.zones       = Array.isArray(d.zones) ? d.zones : [];
+    renderZonesPanel();
+    renderEvacPanel();
+    renderEvacMarkers();
+    render();                        // la proximité zones alimente les popups foyers
+  }catch(e){
+    // On n'invente rien : on laisse les sections en l'état / vides.
+    if (!situation.zones.length) document.getElementById('zones-list').innerHTML =
+      '<div class="empty">Situation officielle indisponible pour l\'instant.</div>';
+    if (!situation.evac.length) document.getElementById('evac-list').innerHTML =
+      '<div class="empty">Évacuations indisponibles pour l\'instant.</div>';
+  }
+}
+
+async function loadMeteo(){
+  const picked = activeFoyersSorted().slice(0, 8);
+  if (!picked.length){
+    meteoByFoyer = {}; forecastByFoyer = {};
+    renderForecastPanel(); render();
+    return;
+  }
+  const lats = picked.map(f => f.lat.toFixed(4)).join(',');
+  const lons = picked.map(f => f.lon.toFixed(4)).join(',');
+  // Un seul appel : conditions actuelles (popups) + prévision 12 h (cônes + panneau).
+  const vars = 'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats + '&longitude=' + lons +
+    '&current=' + vars + '&hourly=' + vars + '&forecast_hours=12&timezone=Europe%2FParis';
+  try{
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const arr = Array.isArray(d) ? d : [d];         // tableau si plusieurs points, objet si un seul
+    const m = {}, fcast = {};
+    picked.forEach((f, i) => {
+      if (arr[i] && arr[i].current) m[f.id] = arr[i].current;
+      if (arr[i] && arr[i].hourly)  fcast[f.id] = arr[i].hourly;
+    });
+    meteoByFoyer = m;
+    forecastByFoyer = fcast;
+    meteoFetchedAt = new Date();
+    renderFoyersPanel();
+    renderForecastPanel();
+    render();                        // redessine popups météo + cônes de propagation
+  }catch(e){ /* on conserve l'affichage sans météo, pas de valeur inventée */ }
+}
+
+/* ============================================================
+   Interactions & cycles
+   ============================================================ */
+document.getElementById('panel-toggle').addEventListener('click', () =>
+  document.getElementById('panel').classList.toggle('closed'));
+
+applyTheme();
+loadFires();
+loadSituation();
+
+setInterval(() => { loadFires(); loadSituation(); }, 10 * 60 * 1000);  // flux serveur (loadFires rappelle loadMeteo)
+setInterval(() => { if (isLive()) render(); }, 60 * 1000);           // recalcul des âges en mode « maintenant »
+</script>
+</body>
+</html>
