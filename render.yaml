@@ -3,7 +3,7 @@ services:
   - type: web
     name: feux-france
     runtime: python
-    plan: free            # passe à "starter" (7 $/mois) pour supprimer la mise en veille
+    plan: starter         # toujours actif (7 $/mois) ; "free" possible mais avec mise en veille
     buildCommand: "echo 'aucune dépendance'"
     startCommand: "python3 server.py"
     healthCheckPath: /
