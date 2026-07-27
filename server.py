@@ -15,7 +15,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 PORT = 8741
@@ -291,6 +291,91 @@ def get_data():
         return _cache["data"]
 
 
+# ---------------------------------------------------------------------------
+# Vents v2 : grille régulière sur la métropole (pas 0.5°, ~330 points),
+# un seul appel batch Open-Meteo (conditions actuelles + prévisions 13h),
+# cache 10 min. Aucune donnée inventée : on ne renvoie que les points
+# effectivement retournés par Open-Meteo avec mesure courante.
+# ---------------------------------------------------------------------------
+WIND_BBOX = (41.0, -5.5, 51.4, 9.7)  # lat_min, lon_min, lat_max, lon_max
+WIND_STEP = 0.5                      # pas de la grille en degrés
+WIND_COAST = 0.4                     # tolérance côtière (accepte un voisin ±0.4°)
+_wind_cache = {"data": None, "ts": 0}
+_wind_lock = threading.Lock()
+
+
+def wind_grid_points():
+    """Points de la grille dont le point OU un voisin à ±0.4° est en France
+    (pour ne pas vider les côtes). Renvoie une liste de (lat, lon)."""
+    lat_min, lon_min, lat_max, lon_max = WIND_BBOX
+    pts = []
+    lat = lat_min
+    while lat <= lat_max + 1e-9:
+        lon = lon_min
+        while lon <= lon_max + 1e-9:
+            if (in_france(lon, lat)
+                    or in_france(lon + WIND_COAST, lat) or in_france(lon - WIND_COAST, lat)
+                    or in_france(lon, lat + WIND_COAST) or in_france(lon, lat - WIND_COAST)):
+                pts.append((round(lat, 4), round(lon, 4)))
+            lon += WIND_STEP
+        lat += WIND_STEP
+    return pts
+
+
+def build_wind():
+    pts = wind_grid_points()
+    if not pts:
+        return {"fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "count": 0, "points": [], "hourly_times": []}
+    lats = ",".join(f"{p[0]}" for p in pts)
+    lons = ",".join(f"{p[1]}" for p in pts)
+    # Commas littérales (Open-Meteo les attend telles quelles), un seul appel avec courant et prévisions.
+    url = ("https://api.open-meteo.com/v1/forecast?latitude=" + lats +
+           "&longitude=" + lons +
+           "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
+           "&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
+           "&forecast_hours=13" +
+           "&timezone=Europe%2FParis")
+    req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    arr = data if isinstance(data, list) else [data]
+    out = []
+    hourly_times = []
+    for item in arr:
+        cur = item.get("current") or {}
+        spd, drc = cur.get("wind_speed_10m"), cur.get("wind_direction_10m")
+        if spd is None or drc is None:
+            continue  # on n'affiche pas un point sans mesure
+        # Capture hourly_times du premier item qui en a (heure locale Europe/Paris, 13 entrées)
+        if not hourly_times:
+            hourly_times = item.get("hourly", {}).get("time", [])
+        out.append({
+            "lat": item.get("latitude"),
+            "lon": item.get("longitude"),
+            "speed": spd,
+            "dir": drc,
+            "gust": cur.get("wind_gusts_10m"),
+            "h_speed": item.get("hourly", {}).get("wind_speed_10m", []),
+            "h_dir": item.get("hourly", {}).get("wind_direction_10m", []),
+            "h_gust": item.get("hourly", {}).get("wind_gusts_10m", []),
+        })
+    return {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "count": len(out),
+        "points": out,
+        "hourly_times": hourly_times,
+    }
+
+
+def get_wind():
+    with _wind_lock:
+        if _wind_cache["data"] is None or time.time() - _wind_cache["ts"] > CACHE_TTL:
+            _wind_cache["data"] = build_wind()
+            _wind_cache["ts"] = time.time()
+        return _wind_cache["data"]
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT / "public"), **kwargs)
@@ -314,6 +399,11 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/fires"):
             try:
                 self._send_json(get_data())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=502)
+        elif self.path.startswith("/api/wind"):
+            try:
+                self._send_json(get_wind())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=502)
         elif self.path.startswith("/api/situation"):
@@ -345,4 +435,4 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"Carte des feux : http://localhost:{PORT}")
-    HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
