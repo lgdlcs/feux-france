@@ -8,6 +8,7 @@ sert en JSON au frontend. Cache de 10 minutes pour ne pas surcharger FIRMS.
 """
 
 import csv
+import gzip
 import io
 import os
 import json
@@ -287,12 +288,24 @@ def build_payload():
     }
 
 
-def get_data():
+def _store_fires(data):
     with _lock:
-        if _cache["data"] is None or time.time() - _cache["ts"] > CACHE_TTL:
-            _cache["data"] = build_payload()
-            _cache["ts"] = time.time()
-        return _cache["data"]
+        _cache["data"] = data
+        _cache["ts"] = time.time()
+
+
+def get_data():
+    """Sert le cache tel quel (le thread d'arrière-plan tient la fraîcheur).
+    Ne construit en direct que si le cache est encore vide (tout premier
+    instant après le démarrage) — jamais de donnée périmée au-delà du cycle
+    de rafraîchissement, jamais d'attente FIRMS pour un visiteur."""
+    with _lock:
+        data = _cache["data"]
+    if data is not None:
+        return data
+    data = build_payload()
+    _store_fires(data)
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -372,17 +385,58 @@ def build_wind():
     }
 
 
+def _store_wind(data):
+    with _wind_lock:
+        _wind_cache["data"] = data
+        _wind_cache["ts"] = time.time()
+
+
 def get_wind():
     with _wind_lock:
-        if _wind_cache["data"] is None or time.time() - _wind_cache["ts"] > CACHE_TTL:
-            _wind_cache["data"] = build_wind()
-            _wind_cache["ts"] = time.time()
-        return _wind_cache["data"]
+        data = _wind_cache["data"]
+    if data is not None:
+        return data
+    data = build_wind()
+    _store_wind(data)
+    return data
+
+
+def refresh_loop():
+    """Rafraîchit les caches en tâche de fond toutes les CACHE_TTL secondes :
+    aucun visiteur n'attend jamais FIRMS (~plusieurs secondes) ni Open-Meteo.
+    En cas d'échec d'un cycle, l'ancien cache reste servi (avec son
+    fetched_at_utc d'origine — pas de fausse fraîcheur) et on réessaie au
+    cycle suivant."""
+    while True:
+        try:
+            _store_fires(build_payload())
+        except Exception:
+            pass
+        try:
+            _store_wind(build_wind())
+        except Exception:
+            pass
+        time.sleep(CACHE_TTL)
+
+
+# Fichiers statiques servis compressés (gzip mis en cache mémoire par mtime).
+# Gros gains : index.html (~120 Ko) et burned.geojson (~3,3 Mo → ~15 %).
+PUBLIC_DIR = (ROOT / "public").resolve()
+COMPRESSIBLE = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".geojson": "application/geo+json",
+    ".svg": "image/svg+xml",
+}
+_gz_cache = {}  # chemin résolu -> (mtime, bytes gzip)
+_gz_lock = threading.Lock()
 
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT / "public"), **kwargs)
+        super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
 
     def end_headers(self):
         # Jamais de HTML/JS périmé côté navigateur : le fichier évolue souvent.
@@ -390,14 +444,54 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
+    def _accepts_gzip(self):
+        return "gzip" in (self.headers.get("Accept-Encoding") or "")
+
     def _send_json(self, obj, status=200):
-        body = json.dumps(obj).encode("utf-8")
+        body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        if status == 200 and len(body) > 860 and self._accepts_gzip():
+            body = gzip.compress(body, 6)
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _try_send_static_gzip(self):
+        """Sert un fichier statique compressible en gzip. Renvoie True si servi."""
+        if not self._accepts_gzip():
+            return False
+        path = urllib.parse.urlparse(self.path).path
+        if path.endswith("/"):
+            path += "index.html"
+        ctype = COMPRESSIBLE.get(os.path.splitext(path)[1].lower())
+        if ctype is None:
+            return False
+        try:
+            fp = (PUBLIC_DIR / path.lstrip("/")).resolve()
+        except OSError:
+            return False
+        if not str(fp).startswith(str(PUBLIC_DIR) + os.sep) or not fp.is_file():
+            return False
+        mtime = fp.stat().st_mtime
+        key = str(fp)
+        with _gz_lock:
+            cached = _gz_cache.get(key)
+        if cached is None or cached[0] != mtime:
+            cached = (mtime, gzip.compress(fp.read_bytes(), 6))
+            with _gz_lock:
+                _gz_cache[key] = cached
+        body = cached[1]
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
 
     def do_GET(self):
         if self.path.startswith("/api/fires"):
@@ -431,12 +525,16 @@ class Handler(SimpleHTTPRequestHandler):
                 "served_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
         else:
-            super().do_GET()
+            if not self._try_send_static_gzip():
+                super().do_GET()
 
     def log_message(self, fmt, *args):
         pass
 
 
 if __name__ == "__main__":
+    # Préchauffe puis rafraîchit les caches en continu : le premier visiteur
+    # après un déploiement n'attend plus la collecte FIRMS.
+    threading.Thread(target=refresh_loop, daemon=True).start()
     print(f"Carte des feux : http://localhost:{PORT}")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

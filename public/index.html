@@ -6,10 +6,14 @@
 <meta name="description" content="Carte en temps réel des incendies en France : détections satellites NASA FIRMS, vents animés, prévisions Open-Meteo et périmètres officiels Copernicus. Aucune donnée inventée.">
 <title>Carte Incendies — feux en France en temps réel</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="preconnect" href="https://api.mapbox.com" crossorigin>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- Polices non bloquantes (display=swap : le texte s'affiche d'abord en fallback) -->
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap"
+      rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 <style>
 :root{
   --bg:#0b0e11; --panel:#12161b; --panel2:#171c22; --line:#232b33;
@@ -398,8 +402,13 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
   #theme-toggle{left:calc(min(85vw,320px) + 12px);top:56px}
   #panel.closed ~ #panel-toggle{left:12px}
   #panel.closed ~ #theme-toggle{left:12px;top:56px}
-  /* le ⚙ du HUD (droite) descend sous le 🌙 empilé pour ne pas le chevaucher */
-  #hud{top:100px}
+  /* le ⚙ passe à GAUCHE, empilé sous ☰ et 🌙, et suit le panneau comme eux */
+  #hud{
+    right:auto;top:100px;align-items:flex-start;
+    left:calc(min(85vw,320px) + 12px);transition:left .25s ease;
+  }
+  #panel.closed ~ #hud{left:12px}
+  #hud-toggle{width:36px;height:36px;border-radius:8px}
   #timeline{left:0;gap:10px;padding:0 10px}
   #panel.closed ~ #timeline{left:0}
 }
@@ -529,6 +538,12 @@ const STYLES = {
   sat:  {dark:'mapbox://styles/mapbox/satellite-streets-v12', light:'mapbox://styles/mapbox/satellite-streets-v12'},
   topo: {dark:'mapbox://styles/mapbox/outdoors-v12',          light:'mapbox://styles/mapbox/outdoors-v12'},
 };
+
+/* Mobile : tout est clos par défaut (panneau replié, la carte d'abord).
+   Fait avant le premier rendu → pas d'animation de fermeture au chargement. */
+if (window.matchMedia && window.matchMedia('(max-width:720px)').matches) {
+  document.getElementById('panel').classList.add('closed');
+}
 
 let theme = localStorage.getItem('ff-theme') || 'dark';
 let currentBase = localStorage.getItem('ff-base') || 'plan';
