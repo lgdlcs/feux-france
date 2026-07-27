@@ -378,14 +378,6 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
   background:rgba(255,84,112,.12);border:1px solid var(--bad);color:var(--bad);
   font-family:var(--mono);font-size:12px;padding:10px 14px;border-radius:8px;max-width:340px;
 }
-/* bandeau du mode démo (GitHub Pages) : toujours visible, jamais ambigu */
-#demo-banner{
-  position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:1300;
-  max-width:min(92vw,760px);padding:7px 16px;border-radius:0 0 10px 10px;
-  background:#7a4200;color:#ffe9c9;border:1px solid #c97a1a;border-top:none;
-  font-size:12.5px;line-height:1.45;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.35);
-}
-#demo-banner a{color:#ffd28a}
 #loading{
   position:absolute;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;
   background:var(--bg);flex-direction:column;gap:14px;transition:opacity .4s;
@@ -616,20 +608,6 @@ let burnedData = null;     // GeoJSON des zones brûlées (chargé en lazy)
 let detPopup   = null;     // popup de détection ouvert (fermé au scrub)
 let conePopup  = null;     // popup de survol des cônes
 
-/* Mode DÉMO (GitHub Pages) : sert un instantané statique daté au lieu du
-   serveur — l'horloge de l'app est FIGÉE à l'heure de l'instantané pour que
-   fenêtre 24 h, frise et prévisions restent cohérentes et honnêtes. */
-const DEMO = location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('demo');
-let demoAnchorMs = null;   // = fetched_at_utc de l'instantané
-function nowMs(){ return (DEMO && demoAnchorMs) ? demoAnchorMs : Date.now(); }
-function fmtDayHM(d){ return new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}).format(d); }
-function showDemoBanner(){
-  let b = document.getElementById('demo-banner');
-  if (!b){ b = document.createElement('div'); b.id = 'demo-banner'; document.body.appendChild(b); }
-  b.innerHTML = '🧪 <b>DÉMO FIGÉE</b> — situation du ' + fmtDayHM(new Date(demoAnchorMs)) +
-    ' (instantané, données non temps réel). Pour le direct : <a href="https://github.com/lgdlcs/feux-france" target="_blank" rel="noopener">lancez le serveur (README)</a>.';
-}
-
 /* Couches togglables — défauts : vents OFF, opérations ON, zones brûlées OFF */
 let layers = {wind:false, ops:true, burned:false};
 try { Object.assign(layers, JSON.parse(localStorage.getItem('ff-layers') || '{}')); } catch(_){}
@@ -693,7 +671,7 @@ function colors(){
 
 /* Instant T sélectionné (ms). SLIDER_NOW = maintenant ; peut dépasser
    Date.now() jusqu'à +12 h (partie « prévision » de la frise). */
-function currentT(){ return nowMs() - (SLIDER_NOW - sliderVal) * STEP_MS; }
+function currentT(){ return Date.now() - (SLIDER_NOW - sliderVal) * STEP_MS; }
 function isLive(){ return sliderVal === SLIDER_NOW; }
 function isFuture(){ return sliderVal > SLIDER_NOW; }
 
@@ -836,7 +814,7 @@ function bindInteractions(){
   map.on('mouseleave','fires', () => { map.getCanvas().style.cursor = ''; });
   map.on('click','fires', e => {
     const p = e.features[0].properties;
-    const now = nowMs(), T = currentT(), future = isFuture();
+    const now = Date.now(), T = currentT(), future = isFuture();
     const a = (T - (+p.acq_utc_ms)) / HOUR;              // âge relatif à T
     const recent = a < 3 && !future;
     const realAge = now - (+p.acq_utc_ms);
@@ -925,7 +903,7 @@ function bindInteractions(){
    setFilter / setPaintProperty (JAMAIS setData sur les ~3k points).
    ============================================================ */
 function render(){
-  const now = nowMs(), T = currentT(), c = colors();
+  const now = Date.now(), T = currentT(), c = colors();
   const future = isFuture();
 
   /* --- détections visibles : fenêtre glissante [winEnd-24h, winEnd] ---
@@ -1007,7 +985,7 @@ function foyerEligible(f, T){
   const first = Date.parse(f.first_utc), last = Date.parse(f.last_utc);
   if (isLive()) return !!f.active;
   if (isFuture()){
-    const now = nowMs();
+    const now = Date.now();
     return first <= now && last >= now - 6 * HOUR;
   }
   return first <= T && last >= T - 6 * HOUR;
@@ -1359,7 +1337,7 @@ function renderFoyersPanel(){
   const box = document.getElementById('foyers-list');
   const list = activeFoyersSorted();
   if (!list.length){ box.innerHTML = '<div class="empty">Aucun foyer actif détecté sur les dernières heures.</div>'; return; }
-  const idx = forecastIndex(nowMs(), currentT());
+  const idx = forecastIndex(Date.now(), currentT());
   box.innerHTML = list.map(f => {
     const nm = f.nom ? 'Foyer de ' + esc(f.nom) : 'Foyer ' + f.lat.toFixed(3) + ', ' + f.lon.toFixed(3);
     const m = meteoByFoyer[f.id];
@@ -1584,18 +1562,16 @@ document.querySelectorAll('.hud-layer').forEach(c => {
    ============================================================ */
 async function loadFires(){
   try{
-    const r = await fetch(DEMO ? 'demo-api/fires.json' : '/api/fires');
+    const r = await fetch('/api/fires');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if (d.error) throw new Error(d.error);
-    if (DEMO && d.fetched_at_utc){ demoAnchorMs = Date.parse(d.fetched_at_utc); showDemoBanner(); }
     allPoints = (Array.isArray(d.points) ? d.points : []).map(p => (p._ms = Date.parse(p.acq_utc), p));
     foyers    = Array.isArray(d.foyers) ? d.foyers : [];
     feedsMeta = Array.isArray(d.feeds)  ? d.feeds  : [];
     renderFeeds();
-    document.getElementById('updated').innerHTML = DEMO
-      ? 'Instantané figé du <b>' + esc(fmtDayHM(new Date(d.fetched_at_utc))) + '</b> · démo, données non temps réel'
-      : 'Actualisé à <b>' + esc(fmtHM.format(new Date(d.fetched_at_utc))) + '</b> · fenêtre 24 h glissante';
+    document.getElementById('updated').innerHTML =
+      'Actualisé à <b>' + esc(fmtHM.format(new Date(d.fetched_at_utc))) + '</b> · fenêtre 24 h glissante';
     document.getElementById('error').style.display = 'none';
     renderFoyersPanel();
     refreshFires();                  // met à jour la source statique (hors scrub)
@@ -1612,7 +1588,7 @@ async function loadFires(){
 
 async function loadSituation(){
   try{
-    const r = await fetch(DEMO ? 'demo-api/situation.json' : '/api/situation');
+    const r = await fetch('/api/situation');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     situation.evac        = (d.evacuations && Array.isArray(d.evacuations.evacuations)) ? d.evacuations.evacuations : [];
@@ -1644,26 +1620,15 @@ async function loadMeteo(){
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats + '&longitude=' + lons +
     '&current=' + vars + '&hourly=' + vars + '&forecast_hours=12&timezone=Europe%2FParis';
   try{
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const arr = Array.isArray(d) ? d : [d];
     const m = {}, fcast = {};
-    if (DEMO){
-      /* Instantané météo (cohérent avec l'horloge figée) : entrées appariées par coordonnées. */
-      const d = await (await fetch('demo-api/meteo.json')).json();
-      const entries = Array.isArray(d.entries) ? d.entries : [];
-      picked.forEach(f => {
-        const e = entries.find(x => Math.abs(x.lat - f.lat) < 0.03 && Math.abs(x.lon - f.lon) < 0.03);
-        if (e && e.current) m[f.id] = e.current;
-        if (e && e.hourly)  fcast[f.id] = e.hourly;
-      });
-    } else {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      const arr = Array.isArray(d) ? d : [d];
-      picked.forEach((f, i) => {
-        if (arr[i] && arr[i].current) m[f.id] = arr[i].current;
-        if (arr[i] && arr[i].hourly)  fcast[f.id] = arr[i].hourly;
-      });
-    }
+    picked.forEach((f, i) => {
+      if (arr[i] && arr[i].current) m[f.id] = arr[i].current;
+      if (arr[i] && arr[i].hourly)  fcast[f.id] = arr[i].hourly;
+    });
     meteoByFoyer = m;
     forecastByFoyer = fcast;
     meteoFetchedAt = new Date();
@@ -1679,7 +1644,7 @@ async function loadMeteo(){
 async function loadWindIfNeeded(){
   if (!layers.wind) return;
   try{
-    const r = await fetch(DEMO ? 'demo-api/wind.json' : '/api/wind');
+    const r = await fetch('/api/wind');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if (d.error) throw new Error(d.error);
@@ -1750,7 +1715,7 @@ function resizeWindCanvas(){
    met à jour la source clic (wind-dots), la légende et le moteur d'animation. */
 function updateWindField(){
   if (!windPoints.length){ windField = null; return; }
-  const now = nowMs(), T = currentT();
+  const now = Date.now(), T = currentT();
   windUseIdx = (windMeta.hasHourly && isFuture()) ? forecastIndex(now, T, 12) : null;
 
   // valeur (spd/dir) au temps sélectionné pour un point
@@ -1956,10 +1921,8 @@ map.on('style.load', () => {
 loadFires();
 loadSituation();
 
-if (!DEMO){  // en démo l'instantané est figé : aucun cycle de rafraîchissement
-  setInterval(() => { loadFires(); loadSituation(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
-  setInterval(() => { if (isLive()) render(); }, 60 * 1000);                                  // recalcul des âges en live
-}
+setInterval(() => { loadFires(); loadSituation(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
+setInterval(() => { if (isLive()) render(); }, 60 * 1000);                                  // recalcul des âges en live
 </script>
 </body>
 </html>

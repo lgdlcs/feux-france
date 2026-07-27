@@ -1,9 +1,9 @@
-# Déploiement 1-clic sur Render (https://render.com) : « New + » → Blueprint → ce repo.
+# Déploiement Render (https://render.com) — plan gratuit possible.
+# Render fournit la variable PORT ; server.py écoute alors sur 0.0.0.0.
 services:
   - type: web
     name: feux-france
     runtime: python
-    plan: starter         # toujours actif (7 $/mois) ; "free" possible mais avec mise en veille
-    buildCommand: "echo 'aucune dépendance'"
+    plan: free
+    buildCommand: "echo 'aucune dépendance (stdlib uniquement)'"
     startCommand: "python3 server.py"
-    healthCheckPath: /
