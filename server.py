@@ -9,6 +9,7 @@ sert en JSON au frontend. Cache de 10 minutes pour ne pas surcharger FIRMS.
 
 import csv
 import io
+import os
 import json
 import math
 import threading
@@ -18,7 +19,10 @@ import urllib.request
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-PORT = 8741
+# PORT/HOST configurables pour l'hébergement (Render, Fly, Docker…) ;
+# par défaut, comportement local inchangé.
+PORT = int(os.environ.get("PORT", 8741))
+HOST = os.environ.get("HOST", "127.0.0.1" if "PORT" not in os.environ else "0.0.0.0")
 ROOT = Path(__file__).parent
 CACHE_TTL = 600  # secondes
 
@@ -435,4 +439,4 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"Carte des feux : http://localhost:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

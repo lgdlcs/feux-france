@@ -1,0 +1,9 @@
+# Déploiement 1-clic sur Render (https://render.com) : « New + » → Blueprint → ce repo.
+services:
+  - type: web
+    name: feux-france
+    runtime: python
+    plan: free            # passe à "starter" (7 $/mois) pour supprimer la mise en veille
+    buildCommand: "echo 'aucune dépendance'"
+    startCommand: "python3 server.py"
+    healthCheckPath: /
