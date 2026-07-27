@@ -1,4 +1,4 @@
-# Feux France 🔥
+# Carte Incendies 🔥
 
 Carte interactive de veille des incendies en France métropolitaine, en temps réel.
 
