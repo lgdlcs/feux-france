@@ -61,7 +61,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
 /* ---------- HUD verre en haut à droite ---------- */
 #hud{
   position:absolute;top:12px;right:12px;z-index:1002;
-  display:flex;flex-direction:column;gap:8px;width:210px;
+  display:flex;flex-direction:column;gap:14px;width:210px;
   font-family:var(--sans);
 }
 .hud-card{
@@ -121,6 +121,24 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
 .base-btn:hover{color:var(--txt);border-color:var(--dim)}
 .base-btn.on{color:var(--fire);border-color:var(--fire);background:var(--chip-on-bg)}
 .base-btn:focus-visible{outline:2px solid var(--fire);outline-offset:2px}
+/* bouton contribuer open source */
+#contrib-btn{
+  display:flex;align-items:center;gap:9px;text-decoration:none;
+  transition:border-color .15s,background .15s;
+}
+#contrib-btn:hover{border-color:var(--fire);background:var(--chip-on-bg)}
+#contrib-btn .ic{font-size:15px;line-height:1;width:18px;text-align:center;flex:none}
+#contrib-btn .lb{
+  font-family:var(--cond);font-size:14px;font-weight:600;letter-spacing:.02em;
+  color:var(--txt);white-space:nowrap;flex:1;
+}
+#contrib-btn .lb b{color:var(--fire);font-weight:700}
+#contrib-btn .gh{
+  font-family:var(--cond);font-size:11px;font-weight:700;letter-spacing:.04em;
+  color:var(--dim);white-space:nowrap;flex:none;
+}
+#contrib-btn:hover .gh{color:var(--fire)}
+#contrib-btn:focus-visible{outline:2px solid var(--fire);outline-offset:2px}
 /* bouton repli HUD (mobile) */
 #hud-toggle{display:none}
 @media (max-width:900px){
@@ -132,7 +150,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
     backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
     box-shadow:0 6px 20px rgba(0,0,0,.25);
   }
-  #hud-body{display:none;flex-direction:column;gap:8px;width:210px;margin-top:8px}
+  #hud-body{display:none;flex-direction:column;gap:14px;width:210px;margin-top:8px}
   #hud.open #hud-body{display:flex}
 }
 
@@ -530,6 +548,12 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
         <button class="base-btn" data-b="topo">Relief</button>
       </div>
     </div>
+    <a class="hud-card" id="contrib-btn"
+       href="https://github.com/lgdlcs/feux-france" target="_blank" rel="noopener">
+      <span class="ic">🌱</span>
+      <span class="lb">Contribuer <b>open source</b></span>
+      <span class="gh">GitHub ↗</span>
+    </a>
   </div>
 </div>
 
@@ -562,7 +586,12 @@ if (window.matchMedia && window.matchMedia('(max-width:720px)').matches) {
   document.getElementById('panel').classList.add('closed');
 }
 
-let theme = localStorage.getItem('ff-theme') || 'dark';
+// Défaut : clair, sauf si l'utilisateur a déjà choisi un thème, ou si sa config
+// système préfère le sombre (prefers-color-scheme). Choix explicite = prioritaire.
+let theme = localStorage.getItem('ff-theme');
+if (theme !== 'light' && theme !== 'dark') {
+  theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+}
 let currentBase = localStorage.getItem('ff-base') || 'plan';
 if (!STYLES[currentBase]) currentBase = 'plan';
 
@@ -643,8 +672,8 @@ let burnedData = null;     // GeoJSON des zones brûlées (chargé en lazy)
 let detPopup   = null;     // popup de détection ouvert (fermé au scrub)
 let conePopup  = null;     // popup de survol des cônes
 
-/* Couches togglables — défauts : vents OFF, opérations ON, zones brûlées OFF */
-let layers = {wind:false, ops:true, burned:false, sensibles:false};
+/* Couches togglables — défauts : toutes activées (le choix utilisateur sauvegardé prime). */
+let layers = {wind:true, ops:true, burned:true, sensibles:true};
 try { Object.assign(layers, JSON.parse(localStorage.getItem('ff-layers') || '{}')); } catch(_){}
 
 const HOUR = 3.6e6, STEP_MS = 30 * 60 * 1000;

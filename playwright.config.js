@@ -9,6 +9,7 @@ module.exports = defineConfig({
   use: {
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    colorScheme: 'light', // défaut déterministe pour tester le light mode ; l'app respecte aussi le dark système
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

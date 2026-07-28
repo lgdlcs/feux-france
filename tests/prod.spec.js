@@ -55,19 +55,35 @@ test.describe('Front prod', () => {
     expect(markers).toBeGreaterThan(0);
   });
 
-  test('activer le layer Points sensibles fait apparaître des pins', async ({ page }) => {
+  test('le layer Points sensibles est actif par défaut et affiche des pins', async ({ page }) => {
     // Ne teste le rendu que si le cache prod est peuplé.
     const d = await (await page.request.get(`${BASE}/api/sensibles`)).json();
     test.skip(!d.count, 'cache sensibles vide (warming) — rien à afficher');
 
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
-    const toggle = page.locator('[data-l="sensibles"]');
-    await expect(toggle).toBeVisible();
-    await toggle.click();
-    // Les pins sensibles portent la classe .sens-pin.
+    // Actif par défaut : pas besoin de cliquer, les pins .sens-pin doivent apparaître.
     await expect(page.locator('.sens-pin').first()).toBeVisible({ timeout: 15000 });
     const pins = await page.locator('.sens-pin').count();
     expect(pins).toBeGreaterThan(0);
+  });
+
+  test('défauts : light mode, fond plan, toutes les couches actives', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    // Thème clair par défaut (aucun choix stocké, config système par défaut du navigateur de test).
+    await expect(page.locator('body')).toHaveClass(/light/);
+    // Fond « plan » actif.
+    await expect(page.locator('.base-btn.on')).toHaveAttribute('data-b', 'plan');
+    // Les 4 couches actives.
+    await expect(page.locator('.hud-layer.on')).toHaveCount(4);
+  });
+
+  test('bouton Contribuer open source pointe vers le dépôt GitHub', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    const btn = page.locator('#contrib-btn');
+    await expect(btn).toBeVisible();
+    await expect(btn).toHaveAttribute('href', /github\.com\/.+\/feux-france/);
+    await expect(btn).toHaveAttribute('target', '_blank');
   });
 });
