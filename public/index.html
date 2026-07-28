@@ -1655,6 +1655,7 @@ function renderSensMarkers(){
 /* Interroge /api/sensibles pour l'emprise carte visible. Clé bbox arrondie :
    on ne refetch pas tant qu'on reste dans la même cellule. Trop dézoomé
    (too_wide) : on garde l'affichage courant et on invite à zoomer. */
+let _sensPollTimer = null;
 async function loadSensibles(){
   const b = map.getBounds();
   const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
@@ -1668,6 +1669,24 @@ async function loadSensibles(){
     if (d.too_wide){
       sensData = []; sensBboxKey = null; renderSensMarkers();
       updateSensHint(true);
+      return;
+    }
+    // Le serveur construit en fond (cache-puis-sert) : il répond vide avec
+    // building:true. On affiche ce qu'il donne et on repolle jusqu'à obtenir
+    // les points, sans figer la clé (sinon on ne redemanderait jamais).
+    if (d.building){
+      if (Array.isArray(d.items) && d.items.length){
+        sensData = d.items; sensLoaded = true; renderSensMarkers();
+      }
+      updateSensHint(false);
+      if (_sensPollTimer) clearTimeout(_sensPollTimer);
+      _sensPollTimer = setTimeout(() => {
+        // Ne repolle que si on est resté dans la même vue.
+        const nb = map.getBounds();
+        const nkey = [nb.getWest(), nb.getSouth(), nb.getEast(), nb.getNorth()]
+          .map(v => v.toFixed(1)).join(',');
+        if (nkey === key) loadSensibles();
+      }, 4000);
       return;
     }
     sensBboxKey = key;

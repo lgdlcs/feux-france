@@ -40,11 +40,20 @@ test.describe('APIs prod', () => {
 
   test('/api/sensibles?bbox renvoie les établissements de la zone', async ({ request }) => {
     // Zone PACA (Marseille–Toulon) : dense en santé + Seveso.
-    const r = await request.get(`${BASE}/api/sensibles?bbox=5.2,43.2,6.2,43.9`);
-    expect(r.ok()).toBeTruthy();
-    const d = await r.json();
-    expect(d).toHaveProperty('count');
-    expect(Array.isArray(d.items)).toBeTruthy();
+    // L'endpoint est en cache-puis-sert : la 1re requête peut répondre
+    // building:true (count 0) le temps de construire en fond. On repolle.
+    const BBOX = '5.2,43.2,6.2,43.9';
+    let d = null;
+    for (let i = 0; i < 30; i++) {
+      const r = await request.get(`${BASE}/api/sensibles?bbox=${BBOX}`);
+      expect(r.ok()).toBeTruthy();
+      d = await r.json();
+      expect(d).toHaveProperty('count');
+      expect(Array.isArray(d.items)).toBeTruthy();
+      if (!d.building && d.count > 0) break;
+      if (d.count > 0) break;
+      await new Promise((res) => setTimeout(res, 2000));
+    }
     expect(d.count).toBeGreaterThan(0);
     for (const it of d.items.slice(0, 5)) {
       expect(it.lat).toBeGreaterThanOrEqual(43.2);
@@ -93,8 +102,14 @@ test.describe('Front prod', () => {
   });
 
   test('après zoom, le layer Points sensibles affiche des pins de la zone', async ({ page }) => {
-    // Vérifie que la zone PACA est peuplée côté API.
-    const d = await (await page.request.get(`${BASE}/api/sensibles?bbox=5.2,43.2,6.2,43.9`)).json();
+    // Vérifie que la zone PACA est peuplée côté API (cache-puis-sert : on repolle
+    // le temps que le build de fond aboutisse).
+    let d = { count: 0 };
+    for (let i = 0; i < 30; i++) {
+      d = await (await page.request.get(`${BASE}/api/sensibles?bbox=5.2,43.2,6.2,43.9`)).json();
+      if (d.count > 0) break;
+      await new Promise((res) => setTimeout(res, 2000));
+    }
     test.skip(!d.count, 'zone sans établissement collecté — rien à afficher');
 
     await page.goto(BASE, { waitUntil: 'networkidle' });

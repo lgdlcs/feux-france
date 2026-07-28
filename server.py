@@ -701,6 +701,7 @@ SENSIBLE_BBOX_MAX_DEG = 4.0     # au-delà (dézoom large), on refuse : trop de 
 SENSIBLE_BBOX_TTL = 600         # 10 min de cache par cellule de bbox
 SENSIBLE_BBOX_MAX_ITEMS = 800   # plafond de points renvoyés d'un coup
 _sensible_bbox_cache = {}       # clé bbox arrondie -> (ts, data)
+_sensible_bbox_building = set() # clés en cours de construction (anti-doublon)
 _sensible_bbox_lock = threading.Lock()
 
 
@@ -791,35 +792,39 @@ def fetch_seveso_bbox(s, w, n, e):
         lons.append(min(lon, e))
         lon += step_lon
     centers = [(la, lo) for la in lats for lo in lons][:GEORISQUES_MAX_TILES]
-    out, seen = [], set()
-    for clat, clon in centers:
+    # Cercles interrogés en parallèle : sinon 12 × ~30 s en série feraient
+    # exploser le temps de build. Chaque cercle en échec est simplement ignoré.
+    circle_results = [None] * len(centers)
+
+    def _one(i, clat, clon):
         try:
-            for it in _fetch_seveso_circle(clat, clon):
-                if not (s <= it["lat"] <= n and w <= it["lon"] <= e):
-                    continue
-                k = _dedup_key(it["lat"], it["lon"])
-                if k in seen:
-                    continue
-                seen.add(k)
-                out.append(it)
+            circle_results[i] = _fetch_seveso_circle(clat, clon)
         except Exception:
-            pass  # un cercle en échec ne bloque pas les autres
+            circle_results[i] = []
+
+    ths = [threading.Thread(target=_one, args=(i, cla, clo))
+           for i, (cla, clo) in enumerate(centers)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join()
+    out, seen = [], set()
+    for res in circle_results:
+        for it in (res or []):
+            if not (s <= it["lat"] <= n and w <= it["lon"] <= e):
+                continue
+            k = _dedup_key(it["lat"], it["lon"])
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(it)
     return out
 
 
-def get_sensibles_bbox(s, w, n, e):
-    """Sensibles dans la vue carte. Refuse les emprises trop larges (dézoom).
-    Cache court par cellule de bbox arrondie pour amortir les déplacements."""
-    if (n - s) > SENSIBLE_BBOX_MAX_DEG or (e - w) > SENSIBLE_BBOX_MAX_DEG:
-        return {"too_wide": True, "count": 0, "items": [],
-                "max_deg": SENSIBLE_BBOX_MAX_DEG}
-    key = (round(s, 1), round(w, 1), round(n, 1), round(e, 1))
-    now = time.time()
-    with _sensible_bbox_lock:
-        hit = _sensible_bbox_cache.get(key)
-        if hit and now - hit[0] < SENSIBLE_BBOX_TTL:
-            return hit[1]
-    # Santé (Overpass, ~14 s) et Seveso (Géorisques carrelé) en parallèle.
+def _build_sensibles_bbox(key, s, w, n, e):
+    """Construit (lentement) les sensibles d'une bbox et remplit le cache.
+    Exécuté en arrière-plan : Overpass (~14 s) et Géorisques carrelé peuvent
+    prendre plusieurs dizaines de secondes, jamais dans le fil d'une requête."""
     results = {}
 
     def _run(name, fn):
@@ -852,8 +857,39 @@ def get_sensibles_bbox(s, w, n, e):
         # Bornage mémoire simple : purge si le cache enfle trop.
         if len(_sensible_bbox_cache) > 200:
             _sensible_bbox_cache.clear()
-        _sensible_bbox_cache[key] = (now, data)
-    return data
+        _sensible_bbox_cache[key] = (time.time(), data)
+        _sensible_bbox_building.discard(key)
+
+
+def get_sensibles_bbox(s, w, n, e):
+    """Sensibles dans la vue carte, en cache-puis-sert : ne bloque JAMAIS le
+    visiteur. Refuse les emprises trop larges (dézoom). Si la cellule de bbox
+    n'est pas encore en cache (ou est périmée), on lance une construction en
+    arrière-plan et on répond immédiatement (données périmées si dispo, sinon
+    `building:true`). Le front repolle jusqu'à obtenir les points."""
+    if (n - s) > SENSIBLE_BBOX_MAX_DEG or (e - w) > SENSIBLE_BBOX_MAX_DEG:
+        return {"too_wide": True, "count": 0, "items": [],
+                "max_deg": SENSIBLE_BBOX_MAX_DEG}
+    key = (round(s, 1), round(w, 1), round(n, 1), round(e, 1))
+    now = time.time()
+    with _sensible_bbox_lock:
+        hit = _sensible_bbox_cache.get(key)
+        fresh = hit and now - hit[0] < SENSIBLE_BBOX_TTL
+        if fresh:
+            return hit[1]
+        # Pas frais : déclenche un build en fond si aucun n'est déjà en cours.
+        launch = key not in _sensible_bbox_building
+        if launch:
+            _sensible_bbox_building.add(key)
+        stale = hit[1] if hit else None
+    if launch:
+        threading.Thread(target=_build_sensibles_bbox,
+                         args=(key, s, w, n, e), daemon=True).start()
+    if stale is not None:
+        # Sert les données périmées immédiatement pendant que le build tourne.
+        return {**stale, "building": True}
+    # Rien en cache encore : réponse immédiate, le front repollera.
+    return {"building": True, "count": 0, "items": [], "bbox": [s, w, n, e]}
 
 
 # ---------------------------------------------------------------------------
