@@ -37,6 +37,43 @@ test.describe('APIs prod', () => {
       expect(['sante', 'seveso']).toContain(it.cat);
     }
   });
+
+  test('/api/sensibles?bbox renvoie les établissements de la zone', async ({ request }) => {
+    // Zone PACA (Marseille–Toulon) : dense en santé + Seveso.
+    const r = await request.get(`${BASE}/api/sensibles?bbox=5.2,43.2,6.2,43.9`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d).toHaveProperty('count');
+    expect(Array.isArray(d.items)).toBeTruthy();
+    expect(d.count).toBeGreaterThan(0);
+    for (const it of d.items.slice(0, 5)) {
+      expect(it.lat).toBeGreaterThanOrEqual(43.2);
+      expect(it.lat).toBeLessThanOrEqual(43.9);
+    }
+  });
+
+  test('/api/sensibles?bbox refuse une emprise trop large', async ({ request }) => {
+    const r = await request.get(`${BASE}/api/sensibles?bbox=-5,41,10,51`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d.too_wide).toBeTruthy();
+    expect(d.items).toEqual([]);
+  });
+
+  test('/api/aircraft répond avec une structure valide', async ({ request }) => {
+    const r = await request.get(`${BASE}/api/aircraft`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    expect(d).toHaveProperty('count');
+    expect(Array.isArray(d.aircraft)).toBeTruthy();
+    expect(d.trace_hours).toBe(3);
+    // Si des aéronefs sont en vol : trace = liste de [lat,lon].
+    for (const a of d.aircraft.slice(0, 3)) {
+      expect(typeof a.lat).toBe('number');
+      expect(typeof a.lon).toBe('number');
+      expect(Array.isArray(a.trace)).toBeTruthy();
+    }
+  });
 });
 
 test.describe('Front prod', () => {
@@ -55,15 +92,17 @@ test.describe('Front prod', () => {
     expect(markers).toBeGreaterThan(0);
   });
 
-  test('le layer Points sensibles est actif par défaut et affiche des pins', async ({ page }) => {
-    // Ne teste le rendu que si le cache prod est peuplé.
-    const d = await (await page.request.get(`${BASE}/api/sensibles`)).json();
-    test.skip(!d.count, 'cache sensibles vide (warming) — rien à afficher');
+  test('après zoom, le layer Points sensibles affiche des pins de la zone', async ({ page }) => {
+    // Vérifie que la zone PACA est peuplée côté API.
+    const d = await (await page.request.get(`${BASE}/api/sensibles?bbox=5.2,43.2,6.2,43.9`)).json();
+    test.skip(!d.count, 'zone sans établissement collecté — rien à afficher');
 
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
-    // Actif par défaut : pas besoin de cliquer, les pins .sens-pin doivent apparaître.
-    await expect(page.locator('.sens-pin').first()).toBeVisible({ timeout: 15000 });
+    // La vue par défaut (France entière) est trop large : on zoome sur une zone dense.
+    await page.evaluate(() => map.jumpTo({ center: [5.4, 43.3], zoom: 9 }));
+    // Le fetch bbox (Overpass) peut prendre ~15 s.
+    await expect(page.locator('.sens-pin').first()).toBeVisible({ timeout: 30000 });
     const pins = await page.locator('.sens-pin').count();
     expect(pins).toBeGreaterThan(0);
   });
@@ -75,8 +114,20 @@ test.describe('Front prod', () => {
     await expect(page.locator('body')).toHaveClass(/light/);
     // Fond « plan » actif.
     await expect(page.locator('.base-btn.on')).toHaveAttribute('data-b', 'plan');
-    // Les 4 couches actives.
-    await expect(page.locator('.hud-layer.on')).toHaveCount(4);
+    // Les 5 couches actives (vents, opérations, zones brûlées, points sensibles, moyens aériens).
+    await expect(page.locator('.hud-layer.on')).toHaveCount(5);
+  });
+
+  test('moyens aériens : toggle présent, traces rendues si des aéronefs volent', async ({ page }) => {
+    const d = await (await page.request.get(`${BASE}/api/aircraft`)).json();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    // Le toggle « Moyens aériens » existe et est actif par défaut.
+    await expect(page.locator('[data-l="avions"]')).toHaveClass(/on/);
+    // Si des aéronefs sont en vol, des markers .avion-pin apparaissent.
+    if (d.count > 0) {
+      await expect(page.locator('.avion-pin').first()).toBeVisible({ timeout: 15000 });
+    }
   });
 
   test('bouton Contribuer open source pointe vers le dépôt GitHub', async ({ page }) => {

@@ -320,6 +320,15 @@ h2{
 }
 .sens-pin.seveso{border-color:#e0b000}
 .sens-pin.sante{border-color:#3aa0ff}
+/* moyens aériens : marker orienté selon le cap + trace GPS */
+.avion-pin{
+  position:absolute;width:26px;height:26px;left:-13px;top:-13px;
+  display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;
+  background:var(--panel);border:1.5px solid #ff5a2c;border-radius:50%;
+  box-shadow:0 1px 6px rgba(0,0,0,.45);transition:transform .3s ease;
+}
+.avion-pin.helico{border-color:#42d0c8}
+.avion-pin .rot{display:inline-block;transition:transform .3s ease}
 
 /* popup Mapbox — même apparence que l'ancien popup Leaflet */
 .mapboxgl-popup-content{
@@ -414,6 +423,14 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
   background:rgba(255,84,112,.12);border:1px solid var(--bad);color:var(--bad);
   font-family:var(--mono);font-size:12px;padding:10px 14px;border-radius:8px;max-width:340px;
 }
+#sens-hint{
+  position:absolute;bottom:70px;left:50%;transform:translateX(-50%);z-index:1100;display:none;
+  background:var(--glass);border:1px solid var(--glass-line);color:var(--txt);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  font-family:var(--cond);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;
+  box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap;
+}
+#sens-hint.show{display:block}
 #loading{
   position:absolute;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;
   background:var(--bg);flex-direction:column;gap:14px;transition:opacity .4s;
@@ -533,6 +550,9 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
       <div class="hud-layer" data-l="sensibles" role="switch" aria-checked="false" tabindex="0">
         <span class="ic">🏥</span><span class="lb">Points sensibles</span><span class="hud-sw"></span>
       </div>
+      <div class="hud-layer" data-l="avions" role="switch" aria-checked="false" tabindex="0">
+        <span class="ic">🛩️</span><span class="lb">Moyens aériens</span><span class="hud-sw"></span>
+      </div>
     </div>
     <div class="hud-card" id="hud-wind">
       <div class="hud-h">Vent · km/h</div>
@@ -563,6 +583,7 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
 </div>
 
 <div id="error"></div>
+<div id="sens-hint">🏥 Zoomez pour afficher les points sensibles de la zone</div>
 <div id="loading"><div class="flame"></div><div class="t">ACQUISITION SATELLITE…</div></div>
 
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
@@ -661,8 +682,11 @@ let meteoFetchedAt = null; // Date de la dernière récupération météo
 let foyerMarkers = {};     // id -> Marker (reconstruit à chaque render)
 let evacMarkers = [];      // ⚠ communes évacuées (indépendants de la frise)
 let opsMarkers  = [];      // 🚒 opérations en cours
-let sensMarkers = [];      // 🏥 points sensibles (santé / Seveso) autour des foyers
+let sensMarkers = [];      // 🏥 points sensibles (santé / Seveso) dans la vue carte
 let sensLoaded  = false;   // établissements sensibles déjà chargés ?
+let sensBboxKey = null;    // dernière bbox interrogée (évite les refetch inutiles)
+let avionMarkers = {};     // hex -> Marker (moyens aériens Sécurité Civile)
+let avionData  = [];       // dernier instantané /api/aircraft
 let windData   = null;     // GeoJSON des points de grille vent (zone de clic + points statiques)
 let windPoints = [];       // points bruts /api/wind v2 (lat,lon,speed,dir,gust,h_speed,h_dir,h_gust)
 let windMeta   = {hourly_times:[], fetched_at_utc:null, hasHourly:false};
@@ -673,7 +697,7 @@ let detPopup   = null;     // popup de détection ouvert (fermé au scrub)
 let conePopup  = null;     // popup de survol des cônes
 
 /* Couches togglables — défauts : toutes activées (le choix utilisateur sauvegardé prime). */
-let layers = {wind:true, ops:true, burned:true, sensibles:true};
+let layers = {wind:true, ops:true, burned:true, sensibles:true, avions:true};
 try { Object.assign(layers, JSON.parse(localStorage.getItem('ff-layers') || '{}')); } catch(_){}
 
 const HOUR = 3.6e6, STEP_MS = 30 * 60 * 1000;
@@ -805,6 +829,7 @@ function installLayers(){
   if (!map.getSource('fires')) map.addSource('fires', {type:'geojson', data:firesGeoJSON()});
   else refreshFires();
   if (!map.getSource('cones')) map.addSource('cones', {type:'geojson', data:emptyFC()});
+  if (!map.getSource('avions-traces')) map.addSource('avions-traces', {type:'geojson', data:emptyFC()});
   if (!map.getSource('wind'))  map.addSource('wind',  {type:'geojson', data:windData || emptyFC()});
 
   // --- couches, dans l'ordre : burned < hulls < fires < cones < (labels) < wind ---
@@ -836,6 +861,15 @@ function installLayers(){
     map.addLayer({id:'cones-line', type:'line', source:'cones',
       paint:{'line-color':colors().ember, 'line-width':1.2, 'line-opacity':0.85, 'line-dasharray':[2,2]}}, before);
   }
+  // Traces GPS des moyens aériens (3 h glissantes) : orange (avion) / cyan (hélico).
+  if (!map.getLayer('avions-traces-line')){
+    map.addLayer({id:'avions-traces-line', type:'line', source:'avions-traces',
+      layout:{'line-cap':'round', 'line-join':'round'},
+      paint:{
+        'line-color':['case', ['==',['get','helico'],1], '#42d0c8', '#ff5a2c'],
+        'line-width':2, 'line-opacity':0.7,
+      }}, before);
+  }
   // Couche circle des points de grille vent :
   //  - mode normal : quasi invisible, sert uniquement de zone de clic → popup
   //  - prefers-reduced-motion : points colorés statiques (remplacent les particules)
@@ -860,6 +894,7 @@ function installLayers(){
   if (layers.sensibles){                    // idem points sensibles (persistance + re-setStyle)
     if (sensLoaded) renderSensMarkers(); else loadSensiblesIfNeeded();
   }
+  if (avionData.length) renderAvionMarkers(); else if (layers.avions) loadAircraft();
 }
 
 /* Recolore les couches data selon le thème courant (variables CSS). */
@@ -1593,8 +1628,8 @@ function renderOpsMarkers(){
   });
 }
 
-/* Points sensibles (santé / Seveso) autour des foyers actifs. Source : OSM
-   (Overpass) + Géorisques via /api/sensibles ; layer togglable, off par défaut. */
+/* Points sensibles (santé / Seveso) dans la vue carte. Source : OSM (Overpass)
+   + Géorisques via /api/sensibles?bbox=… ; rechargés au déplacement de la carte. */
 let sensData = [];
 function renderSensMarkers(){
   sensMarkers.forEach(m => m.remove());
@@ -1617,20 +1652,100 @@ function renderSensMarkers(){
   });
 }
 
+/* Interroge /api/sensibles pour l'emprise carte visible. Clé bbox arrondie :
+   on ne refetch pas tant qu'on reste dans la même cellule. Trop dézoomé
+   (too_wide) : on garde l'affichage courant et on invite à zoomer. */
 async function loadSensibles(){
+  const b = map.getBounds();
+  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+  const key = bbox.map(v => v.toFixed(1)).join(',');
+  if (key === sensBboxKey) return;      // même cellule qu'au dernier appel
   try{
-    const r = await fetch('/api/sensibles');
+    const r = await fetch('/api/sensibles?bbox=' + bbox.map(v => v.toFixed(4)).join(','));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     if (d.error) throw new Error(d.error);
+    if (d.too_wide){
+      sensData = []; sensBboxKey = null; renderSensMarkers();
+      updateSensHint(true);
+      return;
+    }
+    sensBboxKey = key;
     sensData = Array.isArray(d.items) ? d.items : [];
     sensLoaded = true;
     renderSensMarkers();
+    updateSensHint(false);
   }catch(e){
     // Sources externes momentanément indisponibles : on ne montre rien de faux.
-    sensData = [];
-    renderSensMarkers();
   }
+}
+function updateSensHint(tooWide){
+  const el = document.getElementById('sens-hint');
+  if (el) el.classList.toggle('show', !!tooWide && !!layers.sensibles);
+}
+
+/* ============================================================
+   Moyens aériens — flotte Sécurité Civile (Canadair, Dash, hélicos Dragon…).
+   Markers orientés selon le cap + trace GPS (3 h) via /api/aircraft.
+   ============================================================ */
+function renderAvionTraces(){
+  const feats = [];
+  if (layers.avions){
+    avionData.forEach(a => {
+      if (!Array.isArray(a.trace) || a.trace.length < 2) return;
+      const coords = a.trace.map(p => [p[1], p[0]]);  // [lat,lon] -> [lon,lat]
+      feats.push({type:'Feature', geometry:{type:'LineString', coordinates:coords},
+                  properties:{helico: /hélico/i.test(a.kind || '') ? 1 : 0}});
+    });
+  }
+  const src = map.getSource('avions-traces');
+  if (src) src.setData({type:'FeatureCollection', features:feats});
+}
+function renderAvionMarkers(){
+  const seen = {};
+  avionData.forEach(a => {
+    if (a.lat == null || a.lon == null) return;
+    seen[a.hex] = true;
+    const helico = /hélico/i.test(a.kind || '');
+    let mk = avionMarkers[a.hex];
+    if (!mk){
+      const el = document.createElement('div');
+      el.className = 'avion-pin' + (helico ? ' helico' : '');
+      el.innerHTML = '<span class="rot">' + (a.icon || (helico ? '🚁' : '✈️')) + '</span>';
+      mk = new mapboxgl.Marker({element:el, anchor:'center'})
+        .setLngLat([a.lon, a.lat])
+        .setPopup(new mapboxgl.Popup({offset:14, maxWidth:'260px'}));
+      avionMarkers[a.hex] = mk;
+    }
+    mk.setLngLat([a.lon, a.lat]);
+    // Oriente l'icône selon le cap (track). Hélico : pas d'orientation (rotor).
+    const rot = mk.getElement().querySelector('.rot');
+    if (rot) rot.style.transform = (!helico && a.track != null) ? `rotate(${a.track}deg)` : '';
+    const alt = a.alt_ft != null ? `<k>Altitude</k>${fmtInt.format(a.alt_ft)} ft` : (a.on_ground ? '<k>Statut</k>au sol' : '');
+    const spd = a.gs_kt != null ? `<br><k>Vitesse sol</k>${Math.round(a.gs_kt)} kt` : '';
+    mk.getPopup().setHTML(`
+      <div class="pp">
+        <div class="pp-t">${a.icon || ''} ${esc(a.reg || a.flight || 'Aéronef')}</div>
+        <k>Type</k>${esc(a.kind || 'aéronef')}${a.type ? ' (' + esc(a.type) + ')' : ''}<br>
+        ${alt}${spd}
+      </div>`);
+    if (layers.avions) mk.addTo(map); else mk.remove();
+  });
+  // Retire les markers d'appareils disparus de la fenêtre.
+  Object.keys(avionMarkers).forEach(hex => {
+    if (!seen[hex]){ avionMarkers[hex].remove(); delete avionMarkers[hex]; }
+  });
+  renderAvionTraces();
+}
+async function loadAircraft(){
+  try{
+    const r = await fetch('/api/aircraft');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    avionData = Array.isArray(d.aircraft) ? d.aircraft : [];
+    renderAvionMarkers();
+  }catch(e){ /* pas de trace inventée */ }
 }
 
 /* ============================================================
@@ -1656,8 +1771,11 @@ function applyLayerVisibility(){
   }
   opsMarkers.forEach(m => layers.ops ? m.addTo(map) : m.remove());
   sensMarkers.forEach(m => layers.sensibles ? m.addTo(map) : m.remove());
+  Object.values(avionMarkers).forEach(m => layers.avions ? m.addTo(map) : m.remove());
+  renderAvionTraces();
+  if (!layers.sensibles) updateSensHint(false);
 }
-function loadSensiblesIfNeeded(){ if (!sensLoaded) loadSensibles(); }
+function loadSensiblesIfNeeded(){ if (layers.sensibles) loadSensibles(); }
 function toggleLayer(key){
   layers[key] = !layers[key];
   saveLayers();
@@ -1665,6 +1783,7 @@ function toggleLayer(key){
   if (key === 'wind' && layers.wind)     loadWindIfNeeded();
   if (key === 'burned' && layers.burned) loadBurnedIfNeeded();
   if (key === 'sensibles' && layers.sensibles) loadSensiblesIfNeeded();
+  if (key === 'avions' && layers.avions) loadAircraft();
   applyLayerVisibility();
 }
 document.querySelectorAll('.hud-layer').forEach(c => {
@@ -2063,8 +2182,20 @@ map.on('style.load', () => {
 loadFires();
 loadSituation();
 loadNational();
+if (layers.sensibles) loadSensibles();     // sensibles selon la vue initiale
+if (layers.avions)    loadAircraft();      // moyens aériens en direct
+
+// Recharge les sensibles selon la nouvelle emprise après un déplacement/zoom
+// (débounce : on attend la fin du mouvement + un court délai).
+let _moveTimer = null;
+map.on('moveend', () => {
+  if (!layers.sensibles) return;
+  clearTimeout(_moveTimer);
+  _moveTimer = setTimeout(loadSensibles, 400);
+});
 
 setInterval(() => { loadFires(); loadSituation(); loadNational(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
+setInterval(() => { if (layers.avions) loadAircraft(); }, 45 * 1000);                       // traces aériennes (~45 s)
 setInterval(() => { if (isLive()) render(); }, 60 * 1000);                                  // recalcul des âges en live
 </script>
 </body>

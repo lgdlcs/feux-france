@@ -691,6 +691,281 @@ def get_sensibles():
     }
 
 
+# ---------------------------------------------------------------------------
+# Établissements sensibles PAR EMPRISE (bbox de la carte visible).
+# Complète la collecte autour des foyers : l'utilisateur veut voir les zones
+# sensibles même sans feu à proximité. Requêté à la demande selon la vue carte,
+# avec un cache court par cellule de bbox et un plafond de résultats.
+# ---------------------------------------------------------------------------
+SENSIBLE_BBOX_MAX_DEG = 4.0     # au-delà (dézoom large), on refuse : trop de points
+SENSIBLE_BBOX_TTL = 600         # 10 min de cache par cellule de bbox
+SENSIBLE_BBOX_MAX_ITEMS = 800   # plafond de points renvoyés d'un coup
+_sensible_bbox_cache = {}       # clé bbox arrondie -> (ts, data)
+_sensible_bbox_lock = threading.Lock()
+
+
+def fetch_health_bbox(s, w, n, e):
+    """Établissements de santé OSM (hôpitaux, cliniques, Ehpad) dans une bbox
+    Overpass (south, west, north, east)."""
+    bbox = "%f,%f,%f,%f" % (s, w, n, e)
+    q = (
+        "[out:json][timeout:25];("
+        "nwr[\"amenity\"~\"^(hospital|clinic)$\"](%s);"
+        "nwr[\"amenity\"=\"social_facility\"][\"social_facility\"~\"nursing_home|assisted_living|group_home\"](%s);"
+        ");out center %d;"
+    ) % (bbox, bbox, SENSIBLE_BBOX_MAX_ITEMS)
+    url = OVERPASS_URL + "?data=" + urllib.parse.quote(q)
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "feux-france-local/1.0",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=40) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    out = []
+    for el in data.get("elements", []):
+        t = el.get("tags", {})
+        plat = el.get("lat") if el.get("lat") is not None else (el.get("center") or {}).get("lat")
+        plon = el.get("lon") if el.get("lon") is not None else (el.get("center") or {}).get("lon")
+        if plat is None or plon is None:
+            continue
+        am = t.get("amenity")
+        if am == "hospital":
+            kind, icon = "hôpital", "🏥"
+        elif am == "clinic":
+            kind, icon = "clinique", "🏥"
+        else:
+            kind, icon = "Ehpad / foyer médicalisé", "🧓"
+        out.append({
+            "cat": "sante", "kind": kind, "icon": icon,
+            "nom": t.get("name") or kind.capitalize(),
+            "lat": round(plat, 5), "lon": round(plon, 5),
+        })
+    return out
+
+
+GEORISQUES_RADIUS_M = 15000      # rayon max fiable de l'API (500 au-delà de ~20 km)
+GEORISQUES_MAX_TILES = 12        # plafond d'appels Géorisques par bbox (latence bornée)
+
+
+def _fetch_seveso_circle(clat, clon):
+    """Sites Seveso dans un cercle Géorisques (rayon GEORISQUES_RADIUS_M)."""
+    qs = urllib.parse.urlencode({
+        "rayon": GEORISQUES_RADIUS_M, "latlon": f"{clon},{clat}",
+        "page": 1, "page_size": 100,
+    })
+    req = urllib.request.Request(f"{GEORISQUES_URL}?{qs}",
+                                 headers={"User-Agent": "feux-france-local/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    out = []
+    for it in (data.get("data") or []):
+        statut = it.get("statutSeveso") or ""
+        if "seuil" not in statut.lower():
+            continue
+        plat, plon = it.get("latitude"), it.get("longitude")
+        if plat is None or plon is None:
+            continue
+        out.append({
+            "cat": "seveso", "kind": statut, "icon": "☣️",
+            "nom": (it.get("raisonSociale") or "Site industriel").strip(),
+            "commune": it.get("commune"),
+            "lat": round(float(plat), 5), "lon": round(float(plon), 5),
+        })
+    return out
+
+
+def fetch_seveso_bbox(s, w, n, e):
+    """Sites Seveso dans une bbox. Géorisques ne prend que rayon+latlon (≤~20 km),
+    donc on carrèle la bbox en cercles de 15 km (carré inscrit ~21 km de côté),
+    plafonné à GEORISQUES_MAX_TILES pour borner la latence. Points reclippés
+    sur la bbox stricte et dédoublonnés."""
+    step_lat = (GEORISQUES_RADIUS_M * math.sqrt(2)) / 111_320.0
+    clat0 = (s + n) / 2.0
+    step_lon = (GEORISQUES_RADIUS_M * math.sqrt(2)) / (111_320.0 * math.cos(math.radians(clat0)) or 1.0)
+    lats, lat = [], s + step_lat / 2.0
+    while lat < n + step_lat / 2.0:
+        lats.append(min(lat, n))
+        lat += step_lat
+    lons, lon = [], w + step_lon / 2.0
+    while lon < e + step_lon / 2.0:
+        lons.append(min(lon, e))
+        lon += step_lon
+    centers = [(la, lo) for la in lats for lo in lons][:GEORISQUES_MAX_TILES]
+    out, seen = [], set()
+    for clat, clon in centers:
+        try:
+            for it in _fetch_seveso_circle(clat, clon):
+                if not (s <= it["lat"] <= n and w <= it["lon"] <= e):
+                    continue
+                k = _dedup_key(it["lat"], it["lon"])
+                if k in seen:
+                    continue
+                seen.add(k)
+                out.append(it)
+        except Exception:
+            pass  # un cercle en échec ne bloque pas les autres
+    return out
+
+
+def get_sensibles_bbox(s, w, n, e):
+    """Sensibles dans la vue carte. Refuse les emprises trop larges (dézoom).
+    Cache court par cellule de bbox arrondie pour amortir les déplacements."""
+    if (n - s) > SENSIBLE_BBOX_MAX_DEG or (e - w) > SENSIBLE_BBOX_MAX_DEG:
+        return {"too_wide": True, "count": 0, "items": [],
+                "max_deg": SENSIBLE_BBOX_MAX_DEG}
+    key = (round(s, 1), round(w, 1), round(n, 1), round(e, 1))
+    now = time.time()
+    with _sensible_bbox_lock:
+        hit = _sensible_bbox_cache.get(key)
+        if hit and now - hit[0] < SENSIBLE_BBOX_TTL:
+            return hit[1]
+    # Santé (Overpass, ~14 s) et Seveso (Géorisques carrelé) en parallèle.
+    results = {}
+
+    def _run(name, fn):
+        try:
+            results[name] = fn(s, w, n, e)
+        except Exception:
+            results[name] = []  # source indisponible : on garde le reste
+
+    threads = [threading.Thread(target=_run, args=(nm, fn))
+               for nm, fn in (("sante", fetch_health_bbox), ("seveso", fetch_seveso_bbox))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    seen, items = set(), []
+    for it in results.get("sante", []) + results.get("seveso", []):
+        k = (it["cat"], _dedup_key(it["lat"], it["lon"]))
+        if k in seen:
+            continue
+        seen.add(k)
+        items.append(it)
+        if len(items) >= SENSIBLE_BBOX_MAX_ITEMS:
+            break
+    data = {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "bbox": [s, w, n, e], "count": len(items), "items": items,
+    }
+    with _sensible_bbox_lock:
+        # Bornage mémoire simple : purge si le cache enfle trop.
+        if len(_sensible_bbox_cache) > 200:
+            _sensible_bbox_cache.clear()
+        _sensible_bbox_cache[key] = (now, data)
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Suivi aérien — flotte Sécurité Civile (Canadair, Dash, hélicos Dragon…).
+# Source ADS-B communautaire adsb.fi (sans quota). On identifie les aéronefs
+# d'État français par immatriculation F-Z*. Traces GPS accumulées en mémoire
+# sur une fenêtre glissante de 3 h (le poll de fond ajoute les positions).
+# ---------------------------------------------------------------------------
+# adsb.fi plafonne dist à 250 nm (~463 km) : centré sur la France, ça couvre
+# la métropole continentale (la Corse tombe en limite sud-est, acceptable).
+ADSB_URL = "https://opendata.adsb.fi/api/v2/lat/46.6/lon/2.5/dist/250"
+AIRCRAFT_POLL = 45              # secondes entre deux relevés de positions
+AIRCRAFT_TRACE_SEC = 3 * 3600   # fenêtre glissante des traces : 3 h
+AIRCRAFT_MIN_MOVE = 0.0015      # ~150 m : on n'ajoute un point que s'il a bougé
+# Callsigns Sécurité Civile connus, en secours si l'immat n'est pas diffusée.
+AIRCRAFT_CALLSIGNS = ("PELICAN", "MILAN", "DRAGON", "BENGALE", "CANADAIR")
+_aircraft_hist = {}             # hex -> {"info": {...}, "trace": [(t,lat,lon),...]}
+_aircraft_lock = threading.Lock()
+
+
+def _classify_aircraft(type_code, reg):
+    """(kind, icon) selon le type ICAO. Canadair/Dash = bombardiers d'eau."""
+    t = (type_code or "").upper()
+    if t in ("CL2T", "CL41", "C415", "CL30"):
+        return "Canadair (bombardier d'eau)", "🛩️"
+    if t == "DH8D":
+        return "Dash 8 (bombardier d'eau)", "🛩️"
+    if t in ("B350", "BE20", "TBM9", "PC12", "F406", "C208"):
+        return "avion de liaison / reconnaissance", "✈️"
+    if t[:2] in ("EC", "AS", "H1", "H2", "SA", "AW") or t in ("B105", "B412"):
+        return "hélicoptère", "🚁"
+    return "aéronef d'État", "✈️"
+
+
+def build_aircraft():
+    """Relève les positions ADS-B, filtre la flotte Sécurité Civile (immat F-Z*
+    ou callsign connu), met à jour les traces glissantes et renvoie l'instantané."""
+    req = urllib.request.Request(ADSB_URL, headers={
+        "User-Agent": "feux-france/1.0 (carte-incendies.fr)",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    now = time.time()
+    for a in (data.get("aircraft") or data.get("ac") or []):
+        reg = (a.get("r") or "").upper()
+        flight = (a.get("flight") or "").strip().upper()
+        is_secu = reg.startswith("F-Z") or any(c in flight for c in AIRCRAFT_CALLSIGNS)
+        if not is_secu:
+            continue
+        lat, lon = a.get("lat"), a.get("lon")
+        if lat is None or lon is None:
+            continue
+        hexid = a.get("hex") or reg or flight
+        kind, icon = _classify_aircraft(a.get("t"), reg)
+        alt = a.get("alt_baro")
+        info = {
+            "hex": hexid, "reg": reg or None, "flight": flight or None,
+            "type": a.get("t"), "kind": kind, "icon": icon,
+            "lat": round(lat, 5), "lon": round(lon, 5),
+            "alt_ft": None if alt in (None, "ground") else alt,
+            "track": a.get("track"),
+            "gs_kt": a.get("gs"),
+            "on_ground": alt == "ground",
+        }
+        with _aircraft_lock:
+            rec = _aircraft_hist.get(hexid)
+            if rec is None:
+                rec = {"info": info, "trace": []}
+                _aircraft_hist[hexid] = rec
+            rec["info"] = info
+            tr = rec["trace"]
+            # N'ajoute un point que si l'appareil a bougé (trace lisible, mémoire bornée).
+            if not tr or abs(tr[-1][1] - lat) > AIRCRAFT_MIN_MOVE or abs(tr[-1][2] - lon) > AIRCRAFT_MIN_MOVE:
+                tr.append((now, round(lat, 5), round(lon, 5)))
+    # Purge des positions et appareils hors fenêtre de 3 h.
+    with _aircraft_lock:
+        for hexid in list(_aircraft_hist.keys()):
+            tr = [p for p in _aircraft_hist[hexid]["trace"] if now - p[0] <= AIRCRAFT_TRACE_SEC]
+            if not tr:
+                del _aircraft_hist[hexid]
+            else:
+                _aircraft_hist[hexid]["trace"] = tr
+    return get_aircraft()
+
+
+def get_aircraft():
+    """Instantané : appareils courants + leur trace GPS (liste de [lat,lon])."""
+    with _aircraft_lock:
+        craft = []
+        for rec in _aircraft_hist.values():
+            info = dict(rec["info"])
+            info["trace"] = [[p[1], p[2]] for p in rec["trace"]]
+            craft.append(info)
+    return {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "trace_hours": AIRCRAFT_TRACE_SEC // 3600,
+        "count": len(craft),
+        "aircraft": craft,
+    }
+
+
+def aircraft_loop():
+    """Poll dédié (plus rapide que refresh_loop) pour des traces fluides."""
+    while True:
+        try:
+            build_aircraft()
+        except Exception:
+            pass
+        time.sleep(AIRCRAFT_POLL)
+
+
 def refresh_loop():
     """Rafraîchit les caches en tâche de fond toutes les CACHE_TTL secondes :
     aucun visiteur n'attend jamais FIRMS (~plusieurs secondes) ni Open-Meteo.
@@ -816,7 +1091,19 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"error": str(exc)}, status=502)
         elif self.path.startswith("/api/sensibles"):
             try:
-                self._send_json(get_sensibles())
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                bbox = qs.get("bbox", [None])[0]
+                if bbox:
+                    # Emprise carte : bbox=lonW,latS,lonE,latN → get_sensibles_bbox(s,w,n,e)
+                    w, s, e, n = (float(x) for x in bbox.split(","))
+                    self._send_json(get_sensibles_bbox(s, w, n, e))
+                else:
+                    self._send_json(get_sensibles())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=502)
+        elif self.path.startswith("/api/aircraft"):
+            try:
+                self._send_json(get_aircraft())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=502)
         elif self.path.startswith("/api/situation"):
@@ -854,5 +1141,6 @@ if __name__ == "__main__":
     # Préchauffe puis rafraîchit les caches en continu : le premier visiteur
     # après un déploiement n'attend plus la collecte FIRMS.
     threading.Thread(target=refresh_loop, daemon=True).start()
+    threading.Thread(target=aircraft_loop, daemon=True).start()
     print(f"Carte des feux : http://localhost:{PORT}")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
