@@ -293,6 +293,15 @@ h2{
   border-radius:20px;padding:3px 9px;white-space:nowrap;cursor:pointer;
   box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;gap:6px;
 }
+/* points sensibles (santé / Seveso) autour des foyers actifs */
+.sens-pin{
+  position:absolute;width:24px;height:24px;left:-12px;top:-12px;
+  display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;
+  background:var(--panel);border:1.5px solid var(--line);border-radius:50%;
+  box-shadow:0 1px 5px rgba(0,0,0,.4);
+}
+.sens-pin.seveso{border-color:#e0b000}
+.sens-pin.sante{border-color:#3aa0ff}
 
 /* popup Mapbox — même apparence que l'ancien popup Leaflet */
 .mapboxgl-popup-content{
@@ -503,6 +512,9 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
       <div class="hud-layer" data-l="burned" role="switch" aria-checked="false" tabindex="0">
         <span class="ic">🔥</span><span class="lb">Zones brûlées</span><span class="hud-sw"></span>
       </div>
+      <div class="hud-layer" data-l="sensibles" role="switch" aria-checked="false" tabindex="0">
+        <span class="ic">🏥</span><span class="lb">Points sensibles</span><span class="hud-sw"></span>
+      </div>
     </div>
     <div class="hud-card" id="hud-wind">
       <div class="hud-h">Vent · km/h</div>
@@ -620,6 +632,8 @@ let meteoFetchedAt = null; // Date de la dernière récupération météo
 let foyerMarkers = {};     // id -> Marker (reconstruit à chaque render)
 let evacMarkers = [];      // ⚠ communes évacuées (indépendants de la frise)
 let opsMarkers  = [];      // 🚒 opérations en cours
+let sensMarkers = [];      // 🏥 points sensibles (santé / Seveso) autour des foyers
+let sensLoaded  = false;   // établissements sensibles déjà chargés ?
 let windData   = null;     // GeoJSON des points de grille vent (zone de clic + points statiques)
 let windPoints = [];       // points bruts /api/wind v2 (lat,lon,speed,dir,gust,h_speed,h_dir,h_gust)
 let windMeta   = {hourly_times:[], fetched_at_utc:null, hasHourly:false};
@@ -630,7 +644,7 @@ let detPopup   = null;     // popup de détection ouvert (fermé au scrub)
 let conePopup  = null;     // popup de survol des cônes
 
 /* Couches togglables — défauts : vents OFF, opérations ON, zones brûlées OFF */
-let layers = {wind:false, ops:true, burned:false};
+let layers = {wind:false, ops:true, burned:false, sensibles:false};
 try { Object.assign(layers, JSON.parse(localStorage.getItem('ff-layers') || '{}')); } catch(_){}
 
 const HOUR = 3.6e6, STEP_MS = 30 * 60 * 1000;
@@ -814,6 +828,9 @@ function installLayers(){
   render();                 // pose les filtres/couleurs des détections + hulls/cônes + markers 🔥
   loadWindIfNeeded();       // (re)charge les vents si la couche est active
   if (layers.burned) loadBurnedIfNeeded();  // idem zones brûlées (persistance + re-setStyle)
+  if (layers.sensibles){                    // idem points sensibles (persistance + re-setStyle)
+    if (sensLoaded) renderSensMarkers(); else loadSensiblesIfNeeded();
+  }
 }
 
 /* Recolore les couches data selon le thème courant (variables CSS). */
@@ -1541,6 +1558,46 @@ function renderOpsMarkers(){
   });
 }
 
+/* Points sensibles (santé / Seveso) autour des foyers actifs. Source : OSM
+   (Overpass) + Géorisques via /api/sensibles ; layer togglable, off par défaut. */
+let sensData = [];
+function renderSensMarkers(){
+  sensMarkers.forEach(m => m.remove());
+  sensMarkers = [];
+  sensData.forEach(s => {
+    if (s.lat == null || s.lon == null) return;
+    const el = document.createElement('div');
+    el.className = 'sens-pin ' + (s.cat === 'seveso' ? 'seveso' : 'sante');
+    el.textContent = s.icon || (s.cat === 'seveso' ? '☣️' : '🏥');
+    const commune = s.commune ? `<br><k>Commune</k>${esc(s.commune)}` : '';
+    const mk = new mapboxgl.Marker({element:el})
+      .setLngLat([s.lon, s.lat])
+      .setPopup(new mapboxgl.Popup({offset:14, maxWidth:'280px'}).setHTML(`
+        <div class="pp">
+          <div class="pp-t">${s.icon || ''} ${esc(s.nom || 'Établissement')}</div>
+          <k>Type</k>${esc(s.kind || (s.cat === 'seveso' ? 'site Seveso' : 'santé'))}${commune}
+        </div>`));
+    sensMarkers.push(mk);
+    if (layers.sensibles) mk.addTo(map);
+  });
+}
+
+async function loadSensibles(){
+  try{
+    const r = await fetch('/api/sensibles');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    sensData = Array.isArray(d.items) ? d.items : [];
+    sensLoaded = true;
+    renderSensMarkers();
+  }catch(e){
+    // Sources externes momentanément indisponibles : on ne montre rien de faux.
+    sensData = [];
+    renderSensMarkers();
+  }
+}
+
 /* ============================================================
    Toggles de couches (HUD droite)
    ============================================================ */
@@ -1563,13 +1620,16 @@ function applyLayerVisibility(){
     map.setLayoutProperty('burned-line','visibility', v);
   }
   opsMarkers.forEach(m => layers.ops ? m.addTo(map) : m.remove());
+  sensMarkers.forEach(m => layers.sensibles ? m.addTo(map) : m.remove());
 }
+function loadSensiblesIfNeeded(){ if (!sensLoaded) loadSensibles(); }
 function toggleLayer(key){
   layers[key] = !layers[key];
   saveLayers();
   syncLayerChips();
   if (key === 'wind' && layers.wind)     loadWindIfNeeded();
   if (key === 'burned' && layers.burned) loadBurnedIfNeeded();
+  if (key === 'sensibles' && layers.sensibles) loadSensiblesIfNeeded();
   applyLayerVisibility();
 }
 document.querySelectorAll('.hud-layer').forEach(c => {

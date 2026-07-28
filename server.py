@@ -506,14 +506,165 @@ def get_national():
     return data
 
 
+# ---------------------------------------------------------------------------
+# Établissements sensibles autour des foyers actifs : santé (hôpitaux, cliniques,
+# Ehpad via OSM/Overpass) + sites Seveso (API Géorisques). On n'interroge QUE
+# le voisinage des foyers actifs (rayon SENSIBLE_RADIUS_KM) : le layer se peuple
+# là où il y a des feux, jamais toute la France. Cache dédié, rafraîchi comme
+# les foyers. Échec d'une source (Overpass surchargé…) : on sert ce qu'on a.
+# ---------------------------------------------------------------------------
+SENSIBLE_RADIUS_KM = 12          # rayon d'analyse autour de chaque foyer actif
+SENSIBLE_TTL = 1800              # 30 min : ces établissements ne bougent pas vite
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+GEORISQUES_URL = "https://georisques.gouv.fr/api/v1/installations_classees"
+_sensible_cache = {"data": None, "ts": 0}
+_sensible_lock = threading.Lock()
+
+
+def _dedup_key(lat, lon):
+    """Cellule ~150 m pour dédoublonner des établissements vus depuis
+    plusieurs foyers proches."""
+    return (round(lat, 3), round(lon, 3))
+
+
+def fetch_health_around(lat, lon):
+    """Établissements de santé OSM (hôpitaux, cliniques, Ehpad) dans un rayon
+    autour de (lat, lon). node+way+relation ; 'out center' donne un centroïde
+    pour les emprises. Renvoie une liste de dicts."""
+    radius = int(SENSIBLE_RADIUS_KM * 1000)
+    q = (
+        "[out:json][timeout:25];"
+        "nwr[\"amenity\"~\"^(hospital|clinic)$\"](around:%d,%f,%f);"
+        "nwr[\"amenity\"=\"social_facility\"][\"social_facility\"~\"nursing_home|assisted_living|group_home\"](around:%d,%f,%f);"
+        "out center 60;"
+    ) % (radius, lat, lon, radius, lat, lon)
+    url = OVERPASS_URL + "?data=" + urllib.parse.quote(q)
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "feux-france-local/1.0",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=40) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    out = []
+    for el in data.get("elements", []):
+        t = el.get("tags", {})
+        plat = el.get("lat") if el.get("lat") is not None else (el.get("center") or {}).get("lat")
+        plon = el.get("lon") if el.get("lon") is not None else (el.get("center") or {}).get("lon")
+        if plat is None or plon is None:
+            continue
+        am = t.get("amenity")
+        if am == "hospital":
+            kind, icon = "hôpital", "🏥"
+        elif am == "clinic":
+            kind, icon = "clinique", "🏥"
+        else:
+            kind, icon = "Ehpad / foyer médicalisé", "🧓"
+        out.append({
+            "cat": "sante",
+            "kind": kind,
+            "icon": icon,
+            "nom": t.get("name") or kind.capitalize(),
+            "lat": round(plat, 5),
+            "lon": round(plon, 5),
+        })
+    return out
+
+
+def fetch_seveso_around(lat, lon):
+    """Sites Seveso (installations classées) dans un rayon autour de (lat, lon)
+    via l'API Géorisques. On ne garde que les statuts Seveso (seuil bas/haut)."""
+    radius = int(SENSIBLE_RADIUS_KM * 1000)
+    qs = urllib.parse.urlencode({
+        "rayon": radius,
+        "latlon": f"{lon},{lat}",   # Géorisques attend lon,lat
+        "page": 1,
+        "page_size": 100,
+    })
+    url = f"{GEORISQUES_URL}?{qs}"
+    req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    out = []
+    for it in (data.get("data") or []):
+        statut = it.get("statutSeveso") or ""
+        # Ne garder que les vrais Seveso : l'API renvoie aussi "Non Seveso".
+        if "seuil" not in statut.lower():
+            continue
+        plat, plon = it.get("latitude"), it.get("longitude")
+        if plat is None or plon is None:
+            continue
+        out.append({
+            "cat": "seveso",
+            "kind": statut,
+            "icon": "☣️",
+            "nom": (it.get("raisonSociale") or "Site industriel").strip(),
+            "commune": it.get("commune"),
+            "lat": round(float(plat), 5),
+            "lon": round(float(plon), 5),
+        })
+    return out
+
+
+def build_sensibles():
+    """Agrège les établissements sensibles autour des foyers actifs du cache.
+    Ne lève pas si une source échoue : on renvoie ce qui a pu être collecté."""
+    with _lock:
+        fires = _cache["data"]
+    foyers = (fires or {}).get("foyers", []) if fires else []
+    active = [f for f in foyers if f.get("active")]
+
+    seen = set()
+    items = []
+    for f in active:
+        lat, lon = f.get("lat"), f.get("lon")
+        if lat is None or lon is None:
+            continue
+        for fetch in (fetch_health_around, fetch_seveso_around):
+            try:
+                for it in fetch(lat, lon):
+                    k = (it["cat"], _dedup_key(it["lat"], it["lon"]))
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    items.append(it)
+            except Exception:
+                # Source momentanément indisponible (Overpass 504, etc.) :
+                # on n'invente rien, on garde les autres résultats.
+                pass
+
+    return {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "radius_km": SENSIBLE_RADIUS_KM,
+        "count": len(items),
+        "items": items,
+    }
+
+
+def _store_sensibles(data):
+    with _sensible_lock:
+        _sensible_cache["data"] = data
+        _sensible_cache["ts"] = time.time()
+
+
+def get_sensibles():
+    with _sensible_lock:
+        data = _sensible_cache["data"]
+    if data is not None:
+        return data
+    data = build_sensibles()
+    _store_sensibles(data)
+    return data
+
+
 def refresh_loop():
     """Rafraîchit les caches en tâche de fond toutes les CACHE_TTL secondes :
     aucun visiteur n'attend jamais FIRMS (~plusieurs secondes) ni Open-Meteo.
     En cas d'échec d'un cycle, l'ancien cache reste servi (avec son
     fetched_at_utc d'origine — pas de fausse fraîcheur) et on réessaie au
     cycle suivant. Le cumul national EFFIS (hebdomadaire) n'est rafraîchi
-    qu'une fois par heure."""
+    qu'une fois par heure ; les établissements sensibles toutes les 30 min."""
     last_national = 0.0
+    last_sensibles = 0.0
     while True:
         try:
             _store_fires(build_payload())
@@ -527,6 +678,12 @@ def refresh_loop():
             try:
                 _store_national(build_national())
                 last_national = time.time()
+            except Exception:
+                pass
+        if time.time() - last_sensibles >= SENSIBLE_TTL:
+            try:
+                _store_sensibles(build_sensibles())
+                last_sensibles = time.time()
             except Exception:
                 pass
         time.sleep(CACHE_TTL)
@@ -620,6 +777,11 @@ class Handler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/national"):
             try:
                 self._send_json(get_national())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=502)
+        elif self.path.startswith("/api/sensibles"):
+            try:
+                self._send_json(get_sensibles())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=502)
         elif self.path.startswith("/api/situation"):
