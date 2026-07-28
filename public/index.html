@@ -334,6 +334,21 @@ h2{
 .pp .sep{border:none;border-top:1px solid var(--line);margin:9px 0}
 .pp .sub{font-family:var(--sans);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ember);margin-bottom:5px}
 .pp .arr{display:inline-block}
+/* Nature de l'info dans les popups : mesure (gris) / officiel (vert) /
+   estimation non officielle (ambre) / prévision (bleu). Étiquette + liseré. */
+.tag{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.09em;
+  text-transform:uppercase;padding:1px 7px 2px;border-radius:999px;margin-left:7px;
+  vertical-align:1px;white-space:nowrap}
+.tag.mes {background:rgba(148,158,168,.14);color:var(--dim);border:1px solid rgba(148,158,168,.35)}
+.tag.off {background:rgba(63,185,80,.13); color:var(--k-off); border:1px solid rgba(63,185,80,.4)}
+.tag.est {background:rgba(255,201,60,.12); color:var(--k-est); border:1px solid rgba(255,201,60,.4)}
+.tag.prev{background:rgba(88,166,255,.12); color:var(--k-prev);border:1px solid rgba(88,166,255,.4)}
+.pp .blk{border-left:3px solid var(--line);padding-left:9px;margin:2px 0}
+.blk.off {border-left-color:var(--k-off)}
+.blk.est {border-left-color:var(--k-est)}
+.blk.prev{border-left-color:var(--k-prev)}
+body:not(.light){--k-off:#3fb950;--k-est:#ffc93c;--k-prev:#58a6ff}
+body.light{--k-off:#1a7f37;--k-est:#9a6700;--k-prev:#0969da}
 
 /* contrôles Mapbox : mêmes teintes que l'interface + remontés au-dessus de la frise */
 .mapboxgl-ctrl-group{background:var(--panel)!important;border:1px solid var(--line)!important}
@@ -488,6 +503,13 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
     </section>
 
     <section>
+      <div class="notice" style="margin-bottom:10px">
+        <b>Nature des infos dans les bulles :</b>
+        <span class="tag mes" style="margin-left:2px">mesure</span> donnée observée (satellite, ADS-B, météo relevée) ·
+        <span class="tag off">officiel</span> communiqués préfecture &amp; périmètres Copernicus ·
+        <span class="tag est">estimation</span> calcul non officiel du site ·
+        <span class="tag prev">prévision</span> déduit du vent prévu Open-Meteo.
+      </div>
       <div class="notice">
         <b>Lire ces données correctement :</b> chaque point est une <b>anomalie thermique</b> détectée par satellite (pixel de 375 m à 1 km), publiée sous ~3 h après le passage. Ce n'est ni un périmètre officiel de feu, ni une garantie qu'un incendie est toujours actif. Certaines sources chaudes (industrie, torchères, soleil sur toits) peuvent créer de rares faux positifs. <b>Les moyens engagés et les évacuations proviennent des annonces des préfectures et de la presse, saisis manuellement ; la météo et les vents proviennent d'Open-Meteo.</b> Les <b>panaches de propagation horaires</b>, les <b>communes « sous le vent »</b>, l'<b>indice de conditions</b> et les <b>prévisions 12 h</b> sont des estimations simplifiées déduites du vent prévu heure par heure (Open-Meteo), <b>pas une modélisation officielle de propagation</b> : seules les consignes préfectorales font foi. Les <b>zones brûlées</b> sont la délinéation officielle Copernicus EMS (périmètres réels des feux), tandis que les <b>empreintes de foyers</b> restent des estimations satellite. En cas d'urgence : <b>appelez le 18 ou le 112</b>.
       </div>
@@ -1038,7 +1060,7 @@ function bindInteractions(){
       .setLngLat(e.lngLat)
       .setHTML(`
         <div class="pp">
-          <div class="pp-t ${recent ? 'recent' : ''}">${recent ? '🔥 Détection récente' : 'Détection thermique'}</div>
+          <div class="pp-t ${recent ? 'recent' : ''}">${recent ? '🔥 Détection récente' : 'Détection thermique'}<span class="tag mes">mesure satellite</span></div>
           <k>Détectée le</k>${esc(fmtStamp.format(new Date(+p.acq_utc_ms)))} (Paris)<br>
           <k>Ancienneté</k>${esc(ago(realAge))}<br>
           <k>Satellite</k>${esc(p.satellite || 'n/d')}<br>
@@ -1055,7 +1077,8 @@ function bindInteractions(){
     map.getCanvas().style.cursor = 'help';
     const txt = e.features[0].properties.info || '';
     if (!conePopup) conePopup = new mapboxgl.Popup({closeButton:false, closeOnClick:false, maxWidth:'300px'});
-    conePopup.setLngLat(e.lngLat).setHTML(`<div class="pp" style="line-height:1.5">${esc(txt)}</div>`).addTo(map);
+    conePopup.setLngLat(e.lngLat).setHTML(
+      `<div class="pp" style="line-height:1.5"><span class="tag prev" style="margin:0 0 4px">prévision — estimation non officielle</span><br>${esc(txt)}</div>`).addTo(map);
   });
   map.on('mouseleave','cones-fill', () => {
     map.getCanvas().style.cursor = '';
@@ -1079,7 +1102,7 @@ function bindInteractions(){
       .setLngLat(e.lngLat)
       .setHTML(`
         <div class="pp">
-          <div class="pp-t">🌬 Vent ${esc(when)}</div>
+          <div class="pp-t">🌬 Vent ${esc(when)}<span class="tag ${fut ? 'prev' : 'mes'}">${fut ? 'prévision' : 'mesure'}</span></div>
           <k>Vitesse</k>${spd != null ? Math.round(spd) + ' km/h' : 'n.c.'}<br>
           <k>Rafales</k>${gust != null ? Math.round(gust) + ' km/h' : 'n.c.'}<br>
           <k>Direction</k>${dir != null ? windArrow(dir) + ' de ' + cardinal(dir) : 'n.c.'}<br>
@@ -1101,7 +1124,7 @@ function bindInteractions(){
       .setLngLat(e.lngLat)
       .setHTML(`
         <div class="pp">
-          <div class="pp-t">🔥 Zone brûlée</div>
+          <div class="pp-t">🔥 Zone brûlée<span class="tag off">officiel</span></div>
           ${p.label ? esc(p.label) + '<br>' : ''}
           ${p.date ? '<k>Date</k>' + esc(p.date) + '<br>' : ''}
           ${p.source_url ? '<a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Source Copernicus EMS →</a><br>' : ''}
@@ -1246,7 +1269,7 @@ function foyerEligible(f, T){
 /* Bloc « Chiffres officiels » factorisé (partagé foyerPopup / zonePopupHTML). */
 function zoneFiguresHTML(z){
   const mo = z.moyens || {};
-  let html = `<div class="sub">Chiffres officiels — ${esc(z.nom || 'zone')}${z.dept ? ' (' + esc(z.dept) + ')' : ''}</div>
+  let html = `<div class="blk off"><div class="sub">Chiffres officiels — ${esc(z.nom || 'zone')}${z.dept ? ' (' + esc(z.dept) + ')' : ''}<span class="tag off">officiel</span></div>
       <k>Surface officielle</k>${nc(z.hectares, ' ha')}<br>
       <k>Pompiers</k>${nc(mo.pompiers)}<br>
       <k>Militaires</k>${nc(mo.militaires)}<br>
@@ -1259,7 +1282,7 @@ function zoneFiguresHTML(z){
       `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.titre || host(s.url))}</a>`).join(' · ') + '<br>';
   }
   if (z.maj) html += `<k>Mise à jour</k>${esc(z.maj)}`;
-  return html;
+  return html + '</div>';
 }
 /* Popup complet d'une zone d'opérations (marqueur 🚒). */
 function zonePopupHTML(z){
@@ -1271,33 +1294,35 @@ function foyerPopup(f, now){
                       : 'Foyer ' + f.lat.toFixed(3) + ', ' + f.lon.toFixed(3);
   const last = Date.parse(f.last_utc);
   let html = `<div class="pp"><div class="pp-t recent">🔥 ${title}</div>
+    <div class="blk mes"><div class="sub">Détections<span class="tag mes">mesure satellite</span></div>
     <k>Détections 24 h</k>${f.n != null ? f.n : 'n/d'}<br>
     <k>Dernière détection</k>${isFinite(last) ? esc(fmtStamp.format(new Date(last))) + ' — ' + esc(ago(now - last)) : 'n/d'}<br>
-    <k>Empreinte satellite</k>${f.est_area_ha != null ? Math.round(f.est_area_ha) + ' ha' : 'n/d'}<br>
-    <k>FRP max</k>${f.max_frp != null ? f.max_frp.toFixed(1) + ' MW' : 'n/d'}<br>
-    <span style="color:var(--faint);font-size:11px">Empreinte estimée depuis les pixels satellite, non officielle.</span>`;
+    <k>FRP max</k>${f.max_frp != null ? f.max_frp.toFixed(1) + ' MW' : 'n/d'}</div>
+    <div class="blk est"><k>Empreinte satellite</k>${f.est_area_ha != null ? Math.round(f.est_area_ha) + ' ha' : 'n/d'}<span class="tag est">estimation</span><br>
+    <span style="color:var(--faint);font-size:11px">Empreinte estimée depuis les pixels satellite, non officielle.</span></div>`;
 
   const m = meteoByFoyer[f.id];
   if (m){
-    html += `<hr class="sep"><div class="sub">Météo en direct</div>
+    html += `<hr class="sep"><div class="blk mes"><div class="sub">Météo en direct<span class="tag mes">mesure</span></div>
       <k>Température</k>${m.temperature_2m != null ? Math.round(m.temperature_2m) + ' °C' : 'n.c.'}<br>
       <k>Humidité</k>${m.relative_humidity_2m != null ? Math.round(m.relative_humidity_2m) + ' %' : 'n.c.'}${m.vapour_pressure_deficit != null ? ' · VPD ' + (Math.round(m.vapour_pressure_deficit * 10) / 10) + ' kPa' : ''}<br>
       <k>Vent</k>${m.wind_speed_10m != null ? Math.round(m.wind_speed_10m) + ' km/h' : 'n.c.'} · rafales ${m.wind_gusts_10m != null ? Math.round(m.wind_gusts_10m) + ' km/h' : 'n.c.'}`;
     if (m.wind_direction_10m != null)
       html += `<br><k>Direction</k>${windArrow(m.wind_direction_10m)} de ${cardinal(m.wind_direction_10m)}`;
+    html += `</div>`;
   }
 
   const idx = forecastIndex(now, currentT());
   const ind = foyerIndice(forecastByFoyer[f.id], idx);
   if (ind){
-    html += `<hr class="sep"><div class="sub">Conditions de propagation (indice indicatif, non officiel)</div>
+    html += `<hr class="sep"><div class="blk est"><div class="sub">Conditions de propagation<span class="tag est">estimation non officielle</span></div>
       <span style="color:${indiceColor(ind.level)};font-weight:700">${esc(ind.label)}</span>
-      <span style="color:var(--faint)"> — vent ${ind.wind} km/h, rafales ${ind.gust} km/h, humidité ${ind.hum} %${ind.vpd != null ? ', VPD ' + ind.vpd + ' kPa' : ''}</span>`;
+      <span style="color:var(--faint)"> — vent ${ind.wind} km/h, rafales ${ind.gust} km/h, humidité ${ind.hum} %${ind.vpd != null ? ', VPD ' + ind.vpd + ' kPa' : ''}</span></div>`;
   }
   const pg = plumeGeoms[f.id];
   if (pg && pg.hits.length)
-    html += `<br><span style="color:var(--ember)">⚠ Sous le vent : ${esc(pg.hits.join(', '))}</span>
-      <span style="color:var(--faint);font-size:11px"> (panache estimé, non officiel)</span>`;
+    html += `<div class="blk prev"><span style="color:var(--ember)">⚠ Sous le vent : ${esc(pg.hits.join(', '))}</span><span class="tag prev">prévision</span>
+      <span style="color:var(--faint);font-size:11px"> (panache estimé sur le vent prévu, non officiel)</span></div>`;
 
   const z = nearestZone(f);
   if (z) html += `<hr class="sep">` + zoneFiguresHTML(z);
@@ -1792,11 +1817,13 @@ function evacPopupHTML(e){
     : (e.source ? `<br><span style="color:var(--faint)">${esc(e.source)}</span>` : '');
   return `
         <div class="pp">
-          <div class="pp-t">⚠ ${esc(e.commune || 'Commune')}</div>
+          <div class="pp-t">⚠ ${esc(e.commune || 'Commune')}<span class="tag off">officiel</span></div>
+          <div class="blk off">
           <k>Département</k>${esc(e.dept || 'n.c.')}<br>
           <k>Statut</k>${esc(e.statut || 'n.c.')}<br>
           <k>Annonce</k>${esc(e.annonce || 'n.c.')}<br>
           <k>Population</k>${e.population != null ? e.population : 'n.c.'}${src}
+          </div>
         </div>`;
 }
 function renderEvac(){
@@ -1875,7 +1902,7 @@ function avionPopupHTML(p){
   const spd = hasSpd ? `<br><k>Vitesse sol</k>${Math.round(p.gs_kt)} kt` : '';
   return `
       <div class="pp">
-        <div class="pp-t">${p.icon || ''} ${esc(p.reg || p.flight || 'Aéronef')}</div>
+        <div class="pp-t">${p.icon || ''} ${esc(p.reg || p.flight || 'Aéronef')}<span class="tag mes">mesure ADS-B</span></div>
         <k>Type</k>${esc(p.kind || 'aéronef')}${p.type ? ' (' + esc(p.type) + ')' : ''}<br>
         ${alt}${spd}
       </div>`;
