@@ -515,8 +515,10 @@ def get_national():
 # là où il y a des feux, jamais toute la France. Cache dédié, rafraîchi comme
 # les foyers. Échec d'une source (Overpass surchargé…) : on sert ce qu'on a.
 # ---------------------------------------------------------------------------
-SENSIBLE_RADIUS_KM = 12          # rayon d'analyse autour de chaque foyer actif
+SENSIBLE_RADIUS_KM = 12          # rayon d'analyse autour de chaque centre de requête
 SENSIBLE_TTL = 1800              # 30 min : ces établissements ne bougent pas vite
+SENSIBLE_GRID = 0.2              # ~20 km : regroupe les foyers d'un même sinistre
+SENSIBLE_MAX_CENTERS = 8         # plafond d'appels externes par cycle (latence bornée)
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 GEORISQUES_URL = "https://georisques.gouv.fr/api/v1/installations_classees"
 _sensible_cache = {"data": None, "ts": 0}
@@ -607,20 +609,41 @@ def fetch_seveso_around(lat, lon):
     return out
 
 
-def build_sensibles():
-    """Agrège les établissements sensibles autour des foyers actifs du cache.
-    Ne lève pas si une source échoue : on renvoie ce qui a pu être collecté."""
-    with _lock:
-        fires = _cache["data"]
-    foyers = (fires or {}).get("foyers", []) if fires else []
-    active = [f for f in foyers if f.get("active")]
-
-    seen = set()
-    items = []
+def _query_centers(active):
+    """Regroupe les foyers actifs proches en quelques centres de requête.
+    Les feux d'un même sinistre (ex. 23 foyers girondins) se recouvrent
+    dans le rayon SENSIBLE_RADIUS_KM : inutile de lancer 23 requêtes quasi
+    identiques. On grille sur ~SENSIBLE_GRID° et on garde le centroïde de
+    chaque cellule occupée, borné à SENSIBLE_MAX_CENTERS."""
+    cells = {}
     for f in active:
         lat, lon = f.get("lat"), f.get("lon")
         if lat is None or lon is None:
             continue
+        c = (round(lat / SENSIBLE_GRID), round(lon / SENSIBLE_GRID))
+        cells.setdefault(c, []).append((lat, lon))
+    centers = []
+    for pts in cells.values():
+        n = len(pts)
+        centers.append((sum(p[0] for p in pts) / n, sum(p[1] for p in pts) / n, n))
+    # Priorité aux zones qui concentrent le plus de foyers.
+    centers.sort(key=lambda c: c[2], reverse=True)
+    return [(lat, lon) for lat, lon, _ in centers[:SENSIBLE_MAX_CENTERS]]
+
+
+def build_sensibles():
+    """Agrège les établissements sensibles autour des foyers actifs du cache.
+    Ne lève pas si une source échoue : on renvoie ce qui a pu être collecté.
+    Regroupe d'abord les foyers proches pour limiter les appels externes."""
+    with _lock:
+        fires = _cache["data"]
+    foyers = (fires or {}).get("foyers", []) if fires else []
+    active = [f for f in foyers if f.get("active")]
+    centers = _query_centers(active)
+
+    seen = set()
+    items = []
+    for lat, lon in centers:
         for fetch in (fetch_health_around, fetch_seveso_around):
             try:
                 for it in fetch(lat, lon):
@@ -637,6 +660,7 @@ def build_sensibles():
     return {
         "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "radius_km": SENSIBLE_RADIUS_KM,
+        "centers": len(centers),
         "count": len(items),
         "items": items,
     }
@@ -649,13 +673,22 @@ def _store_sensibles(data):
 
 
 def get_sensibles():
+    """Sert le cache tel quel. Ne construit JAMAIS en direct : la collecte
+    (jusqu'à SENSIBLE_MAX_CENTERS × 2 appels externes lents) est faite par le
+    thread de fond. Cache encore vide (juste après démarrage) → réponse vide
+    immédiate plutôt qu'un visiteur qui attend des dizaines de secondes."""
     with _sensible_lock:
         data = _sensible_cache["data"]
     if data is not None:
         return data
-    data = build_sensibles()
-    _store_sensibles(data)
-    return data
+    return {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "radius_km": SENSIBLE_RADIUS_KM,
+        "centers": 0,
+        "count": 0,
+        "items": [],
+        "warming": True,   # collecte en cours côté serveur
+    }
 
 
 def refresh_loop():
