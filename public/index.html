@@ -311,8 +311,6 @@ h2{
   border-radius:20px;padding:3px 9px;white-space:nowrap;cursor:pointer;
   box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;gap:6px;
 }
-/* points sensibles (santé / Seveso) : rendus en couche GeoJSON WebGL (voir
-   installLayers → sensibles-dots/-icons), plus de markers HTML. */
 /* moyens aériens : marker orienté selon le cap + trace GPS */
 .avion-pin{
   position:absolute;width:26px;height:26px;left:-13px;top:-13px;
@@ -416,14 +414,6 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
   background:rgba(255,84,112,.12);border:1px solid var(--bad);color:var(--bad);
   font-family:var(--mono);font-size:12px;padding:10px 14px;border-radius:8px;max-width:340px;
 }
-#sens-hint{
-  position:absolute;bottom:70px;left:50%;transform:translateX(-50%);z-index:1100;display:none;
-  background:var(--glass);border:1px solid var(--glass-line);color:var(--txt);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  font-family:var(--cond);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;
-  box-shadow:0 4px 16px rgba(0,0,0,.3);white-space:nowrap;
-}
-#sens-hint.show{display:block}
 #loading{
   position:absolute;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;
   background:var(--bg);flex-direction:column;gap:14px;transition:opacity .4s;
@@ -540,9 +530,6 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
       <div class="hud-layer" data-l="burned" role="switch" aria-checked="false" tabindex="0">
         <span class="ic">🔥</span><span class="lb">Zones brûlées</span><span class="hud-sw"></span>
       </div>
-      <div class="hud-layer" data-l="sensibles" role="switch" aria-checked="false" tabindex="0">
-        <span class="ic">🏥</span><span class="lb">Points sensibles</span><span class="hud-sw"></span>
-      </div>
       <div class="hud-layer" data-l="avions" role="switch" aria-checked="false" tabindex="0">
         <span class="ic">🛩️</span><span class="lb">Moyens aériens</span><span class="hud-sw"></span>
       </div>
@@ -576,7 +563,6 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
 </div>
 
 <div id="error"></div>
-<div id="sens-hint">🏥 Zoomez pour afficher les points sensibles de la zone</div>
 <div id="loading"><div class="flame"></div><div class="t">ACQUISITION SATELLITE…</div></div>
 
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
@@ -675,9 +661,6 @@ let meteoFetchedAt = null; // Date de la dernière récupération météo
 let foyerMarkers = {};     // id -> Marker (reconstruit à chaque render)
 let evacMarkers = [];      // ⚠ communes évacuées (indépendants de la frise)
 let opsMarkers  = [];      // 🚒 opérations en cours
-let sensData    = [];      // 🏥 points sensibles (santé / Seveso) de la vue carte (source GeoJSON)
-let sensLoaded  = false;   // établissements sensibles déjà chargés ?
-let sensBboxKey = null;    // dernière bbox interrogée (évite les refetch inutiles)
 let avionMarkers = {};     // hex -> Marker (moyens aériens Sécurité Civile)
 let avionData  = [];       // dernier instantané /api/aircraft
 let windData   = null;     // GeoJSON des points de grille vent (zone de clic + points statiques)
@@ -690,7 +673,7 @@ let detPopup   = null;     // popup de détection ouvert (fermé au scrub)
 let conePopup  = null;     // popup de survol des cônes
 
 /* Couches togglables — défauts : toutes activées (le choix utilisateur sauvegardé prime). */
-let layers = {wind:true, ops:true, burned:true, sensibles:true, avions:true};
+let layers = {wind:true, ops:true, burned:true, avions:true};
 try { Object.assign(layers, JSON.parse(localStorage.getItem('ff-layers') || '{}')); } catch(_){}
 
 const HOUR = 3.6e6, STEP_MS = 30 * 60 * 1000;
@@ -823,7 +806,6 @@ function installLayers(){
   else refreshFires();
   if (!map.getSource('cones')) map.addSource('cones', {type:'geojson', data:emptyFC()});
   if (!map.getSource('avions-traces')) map.addSource('avions-traces', {type:'geojson', data:emptyFC()});
-  if (!map.getSource('sensibles')) map.addSource('sensibles', {type:'geojson', data:emptyFC()});
   if (!map.getSource('wind'))  map.addSource('wind',  {type:'geojson', data:windData || emptyFC()});
 
   // --- couches, dans l'ordre : burned < hulls < fires < cones < (labels) < wind ---
@@ -864,26 +846,6 @@ function installLayers(){
         'line-width':2, 'line-opacity':0.7,
       }}, before);
   }
-  // Points sensibles (santé / Seveso) : pastille colorée (bleu santé / jaune
-  // Seveso) + emoji au-dessus. Couche WebGL native → des centaines de points
-  // sans coût DOM, contrairement aux markers HTML.
-  if (!map.getLayer('sensibles-dots')){
-    map.addLayer({id:'sensibles-dots', type:'circle', source:'sensibles',
-      paint:{
-        'circle-radius':['interpolate',['linear'],['zoom'], 6,4, 11,9],
-        'circle-color':['case',['==',['get','cat'],'seveso'],'#e0b000','#3aa0ff'],
-        'circle-opacity':0.85,
-        'circle-stroke-width':1.5,
-        'circle-stroke-color':'#fff',
-      }}, before);
-    map.addLayer({id:'sensibles-icons', type:'symbol', source:'sensibles',
-      layout:{
-        'text-field':['get','icon'],
-        'text-size':['interpolate',['linear'],['zoom'], 6,7, 11,13],
-        'text-allow-overlap':false,
-        'text-ignore-placement':false,
-      }}, before);
-  }
   // Couche circle des points de grille vent :
   //  - mode normal : quasi invisible, sert uniquement de zone de clic → popup
   //  - prefers-reduced-motion : points colorés statiques (remplacent les particules)
@@ -905,9 +867,6 @@ function installLayers(){
   render();                 // pose les filtres/couleurs des détections + hulls/cônes + markers 🔥
   loadWindIfNeeded();       // (re)charge les vents si la couche est active
   if (layers.burned) loadBurnedIfNeeded();  // idem zones brûlées (persistance + re-setStyle)
-  if (layers.sensibles){                    // idem points sensibles (persistance + re-setStyle)
-    if (sensLoaded) renderSensLayer(); else loadSensiblesIfNeeded();
-  }
   if (avionData.length) renderAvionMarkers(); else if (layers.avions) loadAircraft();
 }
 
@@ -987,22 +946,6 @@ function bindInteractions(){
           <k>Rafales</k>${gust != null ? Math.round(gust) + ' km/h' : 'n.c.'}<br>
           <k>Direction</k>${dir != null ? windArrow(dir) + ' de ' + cardinal(dir) : 'n.c.'}<br>
           <span style="color:var(--faint);font-size:11px">${fut ? 'Vent prévu' : 'Vent actuel'} Open-Meteo (10 m).</span>
-        </div>`)
-      .addTo(map);
-  });
-
-  // points sensibles : curseur + popup au clic (santé / Seveso)
-  map.on('mouseenter','sensibles-dots', () => { map.getCanvas().style.cursor = 'pointer'; });
-  map.on('mouseleave','sensibles-dots', () => { map.getCanvas().style.cursor = ''; });
-  map.on('click','sensibles-dots', e => {
-    const p = e.features[0].properties;
-    const commune = p.commune ? `<br><k>Commune</k>${esc(p.commune)}` : '';
-    new mapboxgl.Popup({offset:10, maxWidth:'280px'})
-      .setLngLat(e.lngLat)
-      .setHTML(`
-        <div class="pp">
-          <div class="pp-t">${p.icon || ''} ${esc(p.nom || 'Établissement')}</div>
-          <k>Type</k>${esc(p.kind || 'sensible')}${commune}
         </div>`)
       .addTo(map);
   });
@@ -1658,81 +1601,6 @@ function renderOpsMarkers(){
   });
 }
 
-/* Points sensibles (santé / Seveso) dans la vue carte. Source : OSM (Overpass)
-   + Géorisques via /api/sensibles?bbox=… ; rechargés au déplacement de la carte.
-   Rendu en couche GeoJSON native (circle WebGL) et non en markers HTML : une
-   zone dense peut compter des centaines de points, ingérable en DOM. */
-function sensGeoJSON(){
-  return {type:'FeatureCollection', features: sensData
-    .filter(s => s.lat != null && s.lon != null)
-    .map(s => ({
-      type:'Feature',
-      geometry:{type:'Point', coordinates:[s.lon, s.lat]},
-      properties:{
-        cat: s.cat === 'seveso' ? 'seveso' : 'sante',
-        icon: s.icon || (s.cat === 'seveso' ? '☣️' : '🏥'),
-        nom: s.nom || 'Établissement',
-        kind: s.kind || (s.cat === 'seveso' ? 'site Seveso' : 'santé'),
-        commune: s.commune || '',
-      },
-    }))};
-}
-function renderSensLayer(){
-  const src = map.getSource('sensibles');
-  if (src) src.setData(layers.sensibles ? sensGeoJSON() : emptyFC());
-}
-
-/* Interroge /api/sensibles pour l'emprise carte visible. Clé bbox arrondie :
-   on ne refetch pas tant qu'on reste dans la même cellule. Trop dézoomé
-   (too_wide) : on garde l'affichage courant et on invite à zoomer. */
-let _sensPollTimer = null;
-async function loadSensibles(){
-  const b = map.getBounds();
-  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-  const key = bbox.map(v => v.toFixed(1)).join(',');
-  if (key === sensBboxKey) return;      // même cellule qu'au dernier appel
-  try{
-    const r = await fetch('/api/sensibles?bbox=' + bbox.map(v => v.toFixed(4)).join(','));
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    if (d.too_wide){
-      sensData = []; sensBboxKey = null; renderSensLayer();
-      updateSensHint(true);
-      return;
-    }
-    // Le serveur construit en fond (cache-puis-sert) : il répond vide avec
-    // building:true. On affiche ce qu'il donne et on repolle jusqu'à obtenir
-    // les points, sans figer la clé (sinon on ne redemanderait jamais).
-    if (d.building){
-      if (Array.isArray(d.items) && d.items.length){
-        sensData = d.items; sensLoaded = true; renderSensLayer();
-      }
-      updateSensHint(false);
-      if (_sensPollTimer) clearTimeout(_sensPollTimer);
-      _sensPollTimer = setTimeout(() => {
-        // Ne repolle que si on est resté dans la même vue.
-        const nb = map.getBounds();
-        const nkey = [nb.getWest(), nb.getSouth(), nb.getEast(), nb.getNorth()]
-          .map(v => v.toFixed(1)).join(',');
-        if (nkey === key) loadSensibles();
-      }, 4000);
-      return;
-    }
-    sensBboxKey = key;
-    sensData = Array.isArray(d.items) ? d.items : [];
-    sensLoaded = true;
-    renderSensLayer();
-    updateSensHint(false);
-  }catch(e){
-    // Sources externes momentanément indisponibles : on ne montre rien de faux.
-  }
-}
-function updateSensHint(tooWide){
-  const el = document.getElementById('sens-hint');
-  if (el) el.classList.toggle('show', !!tooWide && !!layers.sensibles);
-}
-
 /* ============================================================
    Moyens aériens — flotte Sécurité Civile (Canadair, Dash, hélicos Dragon…).
    Markers orientés selon le cap + trace GPS (3 h) via /api/aircraft.
@@ -1819,24 +1687,15 @@ function applyLayerVisibility(){
     map.setLayoutProperty('burned-line','visibility', v);
   }
   opsMarkers.forEach(m => layers.ops ? m.addTo(map) : m.remove());
-  if (map.getLayer('sensibles-dots')){
-    const v = layers.sensibles ? 'visible' : 'none';
-    map.setLayoutProperty('sensibles-dots','visibility', v);
-    map.setLayoutProperty('sensibles-icons','visibility', v);
-  }
-  renderSensLayer();
   Object.values(avionMarkers).forEach(m => layers.avions ? m.addTo(map) : m.remove());
   renderAvionTraces();
-  if (!layers.sensibles) updateSensHint(false);
 }
-function loadSensiblesIfNeeded(){ if (layers.sensibles) loadSensibles(); }
 function toggleLayer(key){
   layers[key] = !layers[key];
   saveLayers();
   syncLayerChips();
   if (key === 'wind' && layers.wind)     loadWindIfNeeded();
   if (key === 'burned' && layers.burned) loadBurnedIfNeeded();
-  if (key === 'sensibles' && layers.sensibles) loadSensiblesIfNeeded();
   if (key === 'avions' && layers.avions) loadAircraft();
   applyLayerVisibility();
 }
@@ -2236,17 +2095,7 @@ map.on('style.load', () => {
 loadFires();
 loadSituation();
 loadNational();
-if (layers.sensibles) loadSensibles();     // sensibles selon la vue initiale
 if (layers.avions)    loadAircraft();      // moyens aériens en direct
-
-// Recharge les sensibles selon la nouvelle emprise après un déplacement/zoom
-// (débounce : on attend la fin du mouvement + un court délai).
-let _moveTimer = null;
-map.on('moveend', () => {
-  if (!layers.sensibles) return;
-  clearTimeout(_moveTimer);
-  _moveTimer = setTimeout(loadSensibles, 400);
-});
 
 setInterval(() => { loadFires(); loadSituation(); loadNational(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
 setInterval(() => { if (layers.avions) loadAircraft(); }, 45 * 1000);                       // traces aériennes (~45 s)
