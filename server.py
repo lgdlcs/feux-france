@@ -824,41 +824,52 @@ def fetch_seveso_bbox(s, w, n, e):
 def _build_sensibles_bbox(key, s, w, n, e):
     """Construit (lentement) les sensibles d'une bbox et remplit le cache.
     Exécuté en arrière-plan : Overpass (~14 s) et Géorisques carrelé peuvent
-    prendre plusieurs dizaines de secondes, jamais dans le fil d'une requête."""
-    results = {}
+    prendre plusieurs dizaines de secondes, jamais dans le fil d'une requête.
+    Le marqueur « en construction » est TOUJOURS libéré (finally), sinon un
+    build qui échoue condamnerait la cellule à répondre building:true à vie."""
+    try:
+        results = {}
 
-    def _run(name, fn):
-        try:
-            results[name] = fn(s, w, n, e)
-        except Exception:
-            results[name] = []  # source indisponible : on garde le reste
+        def _run(name, fn):
+            try:
+                results[name] = fn(s, w, n, e)
+            except Exception:
+                results[name] = []  # source indisponible : on garde le reste
 
-    threads = [threading.Thread(target=_run, args=(nm, fn))
-               for nm, fn in (("sante", fetch_health_bbox), ("seveso", fetch_seveso_bbox))]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+        threads = [threading.Thread(target=_run, args=(nm, fn))
+                   for nm, fn in (("sante", fetch_health_bbox), ("seveso", fetch_seveso_bbox))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
 
-    seen, items = set(), []
-    for it in results.get("sante", []) + results.get("seveso", []):
-        k = (it["cat"], _dedup_key(it["lat"], it["lon"]))
-        if k in seen:
-            continue
-        seen.add(k)
-        items.append(it)
-        if len(items) >= SENSIBLE_BBOX_MAX_ITEMS:
-            break
-    data = {
-        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "bbox": [s, w, n, e], "count": len(items), "items": items,
-    }
-    with _sensible_bbox_lock:
-        # Bornage mémoire simple : purge si le cache enfle trop.
-        if len(_sensible_bbox_cache) > 200:
-            _sensible_bbox_cache.clear()
-        _sensible_bbox_cache[key] = (time.time(), data)
-        _sensible_bbox_building.discard(key)
+        seen, items = set(), []
+        for it in results.get("sante", []) + results.get("seveso", []):
+            k = (it["cat"], _dedup_key(it["lat"], it["lon"]))
+            if k in seen:
+                continue
+            seen.add(k)
+            items.append(it)
+            if len(items) >= SENSIBLE_BBOX_MAX_ITEMS:
+                break
+        data = {
+            "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "bbox": [s, w, n, e], "count": len(items), "items": items,
+        }
+        with _sensible_bbox_lock:
+            # Bornage mémoire simple : purge si le cache enfle trop.
+            if len(_sensible_bbox_cache) > 200:
+                _sensible_bbox_cache.clear()
+            # Un résultat vide (sources momentanément KO) est mis en cache
+            # « déjà presque périmé » : on réessaie vite au lieu d'afficher du
+            # vide pendant 10 min. Un résultat peuplé prend le TTL plein.
+            ts = time.time()
+            if not items:
+                ts -= (SENSIBLE_BBOX_TTL - 60)
+            _sensible_bbox_cache[key] = (ts, data)
+    finally:
+        with _sensible_bbox_lock:
+            _sensible_bbox_building.discard(key)
 
 
 def get_sensibles_bbox(s, w, n, e):

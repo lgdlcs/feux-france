@@ -42,6 +42,8 @@ test.describe('APIs prod', () => {
     // Zone PACA (Marseille–Toulon) : dense en santé + Seveso.
     // L'endpoint est en cache-puis-sert : la 1re requête peut répondre
     // building:true (count 0) le temps de construire en fond. On repolle.
+    // Le build de fond (Overpass + Géorisques) prend ~40 s → timeout allongé.
+    test.setTimeout(150000);
     const BBOX = '5.2,43.2,6.2,43.9';
     let d = null;
     for (let i = 0; i < 30; i++) {
@@ -103,7 +105,8 @@ test.describe('Front prod', () => {
 
   test('après zoom, le layer Points sensibles affiche des pins de la zone', async ({ page }) => {
     // Vérifie que la zone PACA est peuplée côté API (cache-puis-sert : on repolle
-    // le temps que le build de fond aboutisse).
+    // le temps que le build de fond aboutisse, ~40 s → timeout allongé).
+    test.setTimeout(150000);
     let d = { count: 0 };
     for (let i = 0; i < 30; i++) {
       d = await (await page.request.get(`${BASE}/api/sensibles?bbox=5.2,43.2,6.2,43.9`)).json();
@@ -116,10 +119,16 @@ test.describe('Front prod', () => {
     await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
     // La vue par défaut (France entière) est trop large : on zoome sur une zone dense.
     await page.evaluate(() => map.jumpTo({ center: [5.4, 43.3], zoom: 9 }));
-    // Le fetch bbox (Overpass) peut prendre ~15 s.
-    await expect(page.locator('.sens-pin').first()).toBeVisible({ timeout: 30000 });
-    const pins = await page.locator('.sens-pin').count();
-    expect(pins).toBeGreaterThan(0);
+    // Les points sensibles sont désormais une couche GeoJSON WebGL (plus de
+    // markers HTML) : on interroge la source Mapbox jusqu'à ce qu'elle se
+    // peuple (fetch bbox + build de fond ~40 s).
+    await expect
+      .poll(async () => page.evaluate(() => {
+        const s = map.getSource && map.getSource('sensibles');
+        const d = s && s._data;
+        return d && Array.isArray(d.features) ? d.features.length : 0;
+      }), { timeout: 60000, intervals: [2000] })
+      .toBeGreaterThan(0);
   });
 
   test('défauts : light mode, fond plan, toutes les couches actives', async ({ page }) => {
