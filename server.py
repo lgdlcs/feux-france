@@ -520,6 +520,15 @@ SENSIBLE_TTL = 1800              # 30 min : ces établissements ne bougent pas v
 SENSIBLE_GRID = 0.2              # ~20 km : regroupe les foyers d'un même sinistre
 SENSIBLE_MAX_CENTERS = 8         # plafond d'appels externes par cycle (latence bornée)
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Miroirs Overpass essayés dans l'ordre : l'instance principale répond souvent
+# « server too busy » (page HTML, pas du JSON) aux heures de pointe. On bascule
+# alors sur un miroir plutôt que de renvoyer une couche vide.
+OVERPASS_MIRRORS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+)
 GEORISQUES_URL = "https://georisques.gouv.fr/api/v1/installations_classees"
 _sensible_cache = {"data": None, "ts": 0}
 _sensible_lock = threading.Lock()
@@ -542,13 +551,7 @@ def fetch_health_around(lat, lon):
         "nwr[\"amenity\"=\"social_facility\"][\"social_facility\"~\"nursing_home|assisted_living|group_home\"](around:%d,%f,%f);"
         "out center 60;"
     ) % (radius, lat, lon, radius, lat, lon)
-    url = OVERPASS_URL + "?data=" + urllib.parse.quote(q)
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "feux-france-local/1.0",
-        "Accept": "application/json",
-    })
-    with urllib.request.urlopen(req, timeout=40) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    data = _overpass_query(q)
     out = []
     for el in data.get("elements", []):
         t = el.get("tags", {})
@@ -705,6 +708,32 @@ _sensible_bbox_building = set() # clés en cours de construction (anti-doublon)
 _sensible_bbox_lock = threading.Lock()
 
 
+def _overpass_query(q):
+    """Interroge Overpass en essayant les miroirs dans l'ordre. Une instance
+    surchargée renvoie une page HTML « too busy » (pas du JSON) : on l'écarte et
+    on passe au miroir suivant. Lève la dernière exception si tous échouent."""
+    last_err = None
+    for base in OVERPASS_MIRRORS:
+        try:
+            url = base + "?data=" + urllib.parse.quote(q)
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "feux-france-local/1.0",
+                "Accept": "application/json",
+            })
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                raw = resp.read().decode("utf-8")
+            data = json.loads(raw)  # les pages d'erreur HTML lèvent ici → miroir suivant
+            if "elements" in data:
+                return data
+            last_err = ValueError("réponse Overpass sans 'elements'")
+        except Exception as exc:
+            last_err = exc
+            continue
+    if last_err:
+        raise last_err
+    return {"elements": []}
+
+
 def fetch_health_bbox(s, w, n, e):
     """Établissements de santé OSM (hôpitaux, cliniques, Ehpad) dans une bbox
     Overpass (south, west, north, east)."""
@@ -715,13 +744,7 @@ def fetch_health_bbox(s, w, n, e):
         "nwr[\"amenity\"=\"social_facility\"][\"social_facility\"~\"nursing_home|assisted_living|group_home\"](%s);"
         ");out center %d;"
     ) % (bbox, bbox, SENSIBLE_BBOX_MAX_ITEMS)
-    url = OVERPASS_URL + "?data=" + urllib.parse.quote(q)
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "feux-france-local/1.0",
-        "Accept": "application/json",
-    })
-    with urllib.request.urlopen(req, timeout=40) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    data = _overpass_query(q)
     out = []
     for el in data.get("elements", []):
         t = el.get("tags", {})
