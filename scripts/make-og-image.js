@@ -1,64 +1,54 @@
-// Génère public/og-image.png (1200×630) : vignette de partage réseaux sociaux.
-// Vue satellite zoomée sur la Gironde + titre « Carte Incendies ».
-//
-// Le token Mapbox est restreint au domaine carte-incendies.fr : on charge donc
-// une page HTML minimale SERVIE PAR LA PROD (origine autorisée) qui rend la carte,
-// puis on capture un screenshot. Lancer : node scripts/make-og-image.js
+// Génère public/og-image.jpg (1200×630) : vignette de partage réseaux sociaux.
+// Fond : vraie capture du site (scripts/og-bg.jpg — feux de Gironde, vents animés,
+// zones brûlées, HUD) + nom du site en très gros. Lancer : node scripts/make-og-image.js
 const { chromium } = require('@playwright/test');
+const fs = require('fs');
 const path = require('path');
 
-const TOKEN = 'pk.eyJ1IjoibHVjYXN1cGNhc2UiLCJhIjoiY21zM2hyamQ2MDN2NTMwcXpweHpvcW5kbyJ9.3zYG1qNlW4rBXoTZ7H1eHg';
+const BG = path.join(__dirname, 'og-bg.jpg');
 const OUT = path.join(__dirname, '..', 'public', 'og-image.jpg');
 const W = 1200, H = 630;
 
-// Gironde : Bordeaux ≈ -0.58/44.84, bassin d'Arcachon ≈ -1.16/44.66.
-// Centre un peu à l'ouest pour cadrer la forêt des Landes/la côte (zones d'incendies 2022).
-const CENTER = [-0.75, 44.72];
-const ZOOM = 7.6;
-
 const PAGE_HTML = `<!doctype html><html><head><meta charset="utf-8">
-<link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@500;600&display=swap" rel="stylesheet">
 <style>
-  html,body{margin:0;padding:0;width:${W}px;height:${H}px;overflow:hidden;background:#0a0a0a;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
-  #map{position:absolute;inset:0}
-  /* Dégradé sombre en bas pour la lisibilité du texte */
+  html,body{margin:0;padding:0;width:${W}px;height:${H}px;overflow:hidden;background:#0a0a0a}
+  /* Capture réelle du site, cadrée sur le foyer (gauche) en gardant le HUD (droite) */
+  #bg{position:absolute;inset:0;background:url('file://${BG}') center 42%/cover no-repeat}
+  /* Voile : lisibilité du titre en bas, image claire au centre */
   #veil{position:absolute;inset:0;pointer-events:none;
-    background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,0) 35%,rgba(0,0,0,.25) 62%,rgba(0,0,0,.82) 100%)}
-  #brand{position:absolute;left:56px;bottom:52px;right:56px;pointer-events:none}
-  #title{font-size:82px;font-weight:800;color:#fff;letter-spacing:-1.5px;line-height:1;
-    text-shadow:0 2px 24px rgba(0,0,0,.6)}
-  #title .fire{color:#ff5722}
-  #subtitle{margin-top:16px;font-size:30px;font-weight:500;color:#f0f0f0;
-    text-shadow:0 1px 12px rgba(0,0,0,.7)}
-  #domain{position:absolute;right:56px;top:44px;font-size:26px;font-weight:600;color:#fff;
-    background:rgba(0,0,0,.45);padding:8px 18px;border-radius:999px;backdrop-filter:blur(4px);
-    text-shadow:0 1px 8px rgba(0,0,0,.5)}
-  #flame{font-size:78px;line-height:1;text-shadow:0 2px 24px rgba(0,0,0,.6)}
-  /* Masque le logo Mapbox (l'attribution reste requise ailleurs sur le site) */
-  .mapboxgl-ctrl-logo,.mapboxgl-ctrl-attrib,.mapboxgl-ctrl-bottom-left,.mapboxgl-ctrl-bottom-right{display:none!important}
+    background:linear-gradient(180deg,rgba(10,10,10,.28) 0%,rgba(10,10,10,0) 30%,
+      rgba(10,10,10,0) 48%,rgba(10,10,10,.55) 78%,rgba(10,10,10,.92) 100%)}
+  #brand{position:absolute;left:56px;bottom:40px;right:56px;pointer-events:none}
+  #title{font-family:'Barlow Condensed',sans-serif;font-size:132px;font-weight:700;
+    color:#fff;letter-spacing:.5px;line-height:.95;text-transform:uppercase;
+    text-shadow:0 3px 30px rgba(0,0,0,.75)}
+  #title .fire{color:#ff5a2b}
+  #subtitle{margin-top:12px;font-family:'Barlow',sans-serif;font-size:31px;font-weight:500;
+    color:#f2f2f2;text-shadow:0 1px 14px rgba(0,0,0,.8)}
+  #domain{position:absolute;left:56px;top:40px;font-family:'Barlow',sans-serif;
+    font-size:27px;font-weight:600;color:#fff;background:rgba(10,10,10,.55);
+    padding:9px 20px;border-radius:999px;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+  #live{position:absolute;right:56px;top:44px;font-family:'Barlow Condensed',sans-serif;
+    font-size:26px;font-weight:700;letter-spacing:.14em;color:#fff;background:#d92c0f;
+    padding:8px 18px;border-radius:8px;box-shadow:0 2px 18px rgba(0,0,0,.45)}
 </style></head><body>
-<div id="map"></div>
+<div id="bg"></div>
 <div id="veil"></div>
 <div id="domain">🔥 carte-incendies.fr</div>
+<div id="live">● DIRECT</div>
 <div id="brand">
   <div id="title">Carte <span class="fire">Incendies</span></div>
-  <div id="subtitle">Les feux en France en temps réel — satellites, vents & périmètres officiels</div>
+  <div id="subtitle">Les feux en France en temps réel — satellites NASA, vents, moyens aériens & périmètres officiels</div>
 </div>
 <script>
-  mapboxgl.accessToken = '${TOKEN}';
   window.__ready = false;
-  const map = new mapboxgl.Map({
-    container:'map',
-    style:'mapbox://styles/mapbox/satellite-streets-v12',
-    center:[${CENTER[0]}, ${CENTER[1]}],
-    zoom:${ZOOM},
-    interactive:false,
-    attributionControl:false,
-    fadeDuration:0,
-  });
-  map.on('idle', () => { window.__ready = true; });
+  Promise.all([
+    document.fonts.load("700 132px 'Barlow Condensed'"),
+    document.fonts.load("500 31px 'Barlow'"),
+    new Promise(res => { const i = new Image(); i.onload = res; i.onerror = res; i.src = 'file://${BG}'; }),
+  ]).then(() => setTimeout(() => { window.__ready = true; }, 300));
 </script></body></html>`;
 
 (async () => {
@@ -67,16 +57,13 @@ const PAGE_HTML = `<!doctype html><html><head><meta charset="utf-8">
     viewport: { width: W, height: H },
     deviceScaleFactor: 1, // capture exactement 1200×630 (taille OG recommandée)
   });
-  // On sert la page depuis l'origine de prod pour que le token Mapbox soit autorisé.
-  await page.route('https://carte-incendies.fr/__og__', route =>
-    route.fulfill({ contentType: 'text/html', body: PAGE_HTML }));
-  await page.goto('https://carte-incendies.fr/__og__', { waitUntil: 'load' });
-
-  // Attend que les tuiles satellite soient chargées (event 'idle').
-  await page.waitForFunction(() => window.__ready === true, { timeout: 60000 });
-  await page.waitForTimeout(1500); // marge pour le rendu final des labels
-
-  await page.screenshot({ path: OUT, type: 'jpeg', quality: 82, clip: { x: 0, y: 0, width: W, height: H } });
+  // Page servie en file:// (une page data: n'a pas le droit de charger l'image locale).
+  const tmp = path.join(__dirname, '.og-tmp.html');
+  fs.writeFileSync(tmp, PAGE_HTML);
+  await page.goto('file://' + tmp, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  await page.screenshot({ path: OUT, type: 'jpeg', quality: 85, clip: { x: 0, y: 0, width: W, height: H } });
   await browser.close();
+  fs.unlinkSync(tmp);
   console.log('OK →', OUT);
 })().catch(e => { console.error('ÉCHEC', e); process.exit(1); });
