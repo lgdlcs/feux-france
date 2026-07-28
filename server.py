@@ -901,13 +901,22 @@ def _build_sensibles_bbox(key, s, w, n, e):
             # Bornage mémoire simple : purge si le cache enfle trop.
             if len(_sensible_bbox_cache) > 200:
                 _sensible_bbox_cache.clear()
-            # Un résultat vide (sources momentanément KO) est mis en cache
-            # « déjà presque périmé » : on réessaie vite au lieu d'afficher du
-            # vide pendant 10 min. Un résultat peuplé prend le TTL plein.
-            ts = time.time()
-            if not items:
-                ts -= (SENSIBLE_BBOX_TTL - 60)
-            _sensible_bbox_cache[key] = (ts, data)
+            prev = _sensible_bbox_cache.get(key)
+            prev_count = prev[1].get("count", 0) if prev else 0
+            if not items and prev_count > 0:
+                # Overpass est intermittent : un build vide NE DOIT PAS écraser
+                # un cache déjà peuplé (sinon la cellule oscille 503↔0). On garde
+                # les bons points mais on les marque presque périmés pour retenter
+                # vite un build peuplé.
+                _sensible_bbox_cache[key] = (
+                    time.time() - (SENSIBLE_BBOX_TTL - 60), prev[1])
+            else:
+                # Un résultat vide sans historique est caché « presque périmé »
+                # pour réessayer vite ; un résultat peuplé prend le TTL plein.
+                ts = time.time()
+                if not items:
+                    ts -= (SENSIBLE_BBOX_TTL - 60)
+                _sensible_bbox_cache[key] = (ts, data)
     finally:
         with _sensible_bbox_lock:
             _sensible_bbox_building.discard(key)
