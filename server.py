@@ -708,30 +708,48 @@ _sensible_bbox_building = set() # clés en cours de construction (anti-doublon)
 _sensible_bbox_lock = threading.Lock()
 
 
+def _overpass_one(base, q):
+    """Un seul miroir. Renvoie le dict JSON si valide, sinon lève. Une instance
+    surchargée renvoie une page HTML « too busy » → json.loads lève."""
+    url = base + "?data=" + urllib.parse.quote(q)
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "feux-france-local/1.0",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=40) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    if "elements" not in data:
+        raise ValueError("réponse Overpass sans 'elements'")
+    return data
+
+
 def _overpass_query(q):
-    """Interroge Overpass en essayant les miroirs dans l'ordre. Une instance
-    surchargée renvoie une page HTML « too busy » (pas du JSON) : on l'écarte et
-    on passe au miroir suivant. Lève la dernière exception si tous échouent."""
-    last_err = None
-    for base in OVERPASS_MIRRORS:
+    """Interroge TOUS les miroirs Overpass en parallèle et renvoie la première
+    réponse JSON valide. En série, un miroir mort qui pend 40 s bloquait tout le
+    build (zone Marseille jamais collectée) ; en parallèle, le plus rapide gagne
+    et les lents/HS sont ignorés. Lève si aucun miroir ne répond."""
+    result = {"data": None}
+    done = threading.Event()
+    lock = threading.Lock()
+
+    def _try(base):
         try:
-            url = base + "?data=" + urllib.parse.quote(q)
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "feux-france-local/1.0",
-                "Accept": "application/json",
-            })
-            with urllib.request.urlopen(req, timeout=40) as resp:
-                raw = resp.read().decode("utf-8")
-            data = json.loads(raw)  # les pages d'erreur HTML lèvent ici → miroir suivant
-            if "elements" in data:
-                return data
-            last_err = ValueError("réponse Overpass sans 'elements'")
-        except Exception as exc:
-            last_err = exc
-            continue
-    if last_err:
-        raise last_err
-    return {"elements": []}
+            data = _overpass_one(base, q)
+        except Exception:
+            return
+        with lock:
+            if result["data"] is None:
+                result["data"] = data
+                done.set()
+
+    threads = [threading.Thread(target=_try, args=(b,)) for b in OVERPASS_MIRRORS]
+    for t in threads:
+        t.start()
+    done.wait(timeout=45)  # premier succès, sinon on abandonne peu après le timeout HTTP
+    with lock:
+        if result["data"] is not None:
+            return result["data"]
+    raise RuntimeError("tous les miroirs Overpass ont échoué")
 
 
 def fetch_health_bbox(s, w, n, e):
