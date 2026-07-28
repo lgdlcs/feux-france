@@ -188,6 +188,10 @@ h2{
 #bigcount .unit{font-family:var(--sans);font-size:12px;color:var(--dim);font-weight:500;margin-left:8px}
 #updated{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px}
 #updated b{color:var(--txt);font-weight:500}
+.natl{margin-top:12px;padding:10px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}
+.natl .nb{font-family:var(--cond);font-size:24px;font-weight:700;color:var(--ember);font-variant-numeric:tabular-nums;line-height:1}
+.natl .lb{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.35}
+.natl a{color:var(--dim)}
 
 /* cartes foyers actifs */
 .fcard{
@@ -439,6 +443,7 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
       <div id="bigcount">—<span class="unit">détections</span></div>
       <div id="updated">chargement…</div>
       <span id="fcast-badge" title="Instant sélectionné dans le futur">PRÉVISION</span>
+      <div id="national-ha" class="natl" style="display:none"></div>
     </section>
 
     <section>
@@ -640,6 +645,7 @@ let playing = false, playTimer = null;
    ============================================================ */
 const fmtHM    = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', hour:'2-digit', minute:'2-digit'});
 const fmtStamp = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+const fmtInt   = new Intl.NumberFormat('fr-FR');  // séparateur de milliers (espace)
 
 function ago(ms){
   if (!isFinite(ms) || ms < 0) return '';
@@ -1623,6 +1629,29 @@ async function loadSituation(){
   }
 }
 
+/* Cumul national de surface brûlée (année en cours), source EFFIS/Copernicus.
+   Chiffre satellite (feux ≳30 ha, avec latence) : sous-estime le total national
+   réel — d'où la note. Se met à jour tout seul via /api/national. */
+async function loadNational(){
+  const box = document.getElementById('national-ha');
+  try{
+    const r = await fetch('/api/national');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.error || d.burned_ha == null) throw new Error(d.error || 'données absentes');
+    const nb = fmtInt.format(d.burned_ha);
+    const yr = d.year || '';
+    let sub = `Surface cartographiée par satellite en ${esc(String(yr))} · <b>source EFFIS / Copernicus</b>`;
+    if (d.avg_ha != null && d.avg_ha > 0)
+      sub += ` · moyenne 2006→ à cette date : ${fmtInt.format(d.avg_ha)} ha`;
+    sub += `<br><span style="color:var(--faint)">Feux ≳30 ha uniquement, avec latence de cartographie : le total national réel (bilans pompiers) est plus élevé.</span>`;
+    box.innerHTML = `<div class="nb">${nb} ha</div><div class="lb">${sub}</div>`;
+    box.style.display = '';
+  }catch(e){
+    box.style.display = 'none';   // pas de chiffre inventé : on masque en cas d'échec
+  }
+}
+
 async function loadMeteo(){
   const picked = activeFoyersSorted().slice(0, 8);
   if (!picked.length){
@@ -1936,8 +1965,9 @@ map.on('style.load', () => {
 
 loadFires();
 loadSituation();
+loadNational();
 
-setInterval(() => { loadFires(); loadSituation(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
+setInterval(() => { loadFires(); loadSituation(); loadNational(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
 setInterval(() => { if (isLive()) render(); }, 60 * 1000);                                  // recalcul des âges en live
 </script>
 </body>

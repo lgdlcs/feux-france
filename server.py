@@ -438,12 +438,82 @@ def get_wind():
     return data
 
 
+# ---------------------------------------------------------------------------
+# Cumul national de surface brûlée (année en cours) via EFFIS / Copernicus.
+# Source officielle européenne (le portail effis.statistics s'appuie dessus).
+# Les valeurs 'area_ha' sont les surfaces cartographiées par satellite semaine
+# par semaine ; on somme celles des semaines déjà écoulées pour le cumul YTD.
+# NB : EFFIS ne cartographie que les feux ≳30 ha et avec latence — ce cumul
+# SOUS-ESTIME le total national réel (stats pompiers), d'où la note côté front.
+# Donnée hebdomadaire : rafraîchie une fois par heure, pas toutes les 10 min.
+# ---------------------------------------------------------------------------
+EFFIS_URL = "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=FRA"
+NATIONAL_TTL = 3600  # secondes
+_national_cache = {"data": None, "ts": 0}
+_national_lock = threading.Lock()
+
+
+def build_national():
+    """Cumul YTD (ha) et nb d'événements pour la France depuis EFFIS.
+    Ne somme que les semaines dont la date est déjà passée (les entrées
+    futures sont des placeholders à ignorer)."""
+    req = urllib.request.Request(EFFIS_URL, headers={"User-Agent": "feux-france-local/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    weeks = data.get("banfweekly") if isinstance(data, dict) else None
+    if not isinstance(weeks, list) or not weeks:
+        raise ValueError("réponse EFFIS inattendue")
+    today = time.strftime("%Y%m%d", time.gmtime())
+    ba = avg = events = 0.0
+    counted = 0
+    year = None
+    for w in weeks:
+        md = w.get("mddate")
+        if not isinstance(md, str) or md > today:
+            continue
+        ba += float(w.get("area_ha") or 0)
+        avg += float(w.get("area_ha_avg") or 0)
+        events += float(w.get("events") or 0)
+        counted += 1
+        if year is None and len(md) >= 4:
+            year = md[:4]
+    # Garde-fou : au moins une semaine et bornes physiques plausibles.
+    if not counted or ba < 0 or ba > 1e7:
+        raise ValueError("cumul EFFIS hors bornes")
+    return {
+        "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "year": int(year) if year else None,
+        "burned_ha": round(ba),
+        "avg_ha": round(avg),          # climatologie 2006→ à la même date
+        "events": round(events),
+        "source": "EFFIS / Copernicus (surface cartographiée par satellite, feux ≳30 ha)",
+    }
+
+
+def _store_national(data):
+    with _national_lock:
+        _national_cache["data"] = data
+        _national_cache["ts"] = time.time()
+
+
+def get_national():
+    with _national_lock:
+        data = _national_cache["data"]
+    if data is not None:
+        return data
+    data = build_national()
+    _store_national(data)
+    return data
+
+
 def refresh_loop():
     """Rafraîchit les caches en tâche de fond toutes les CACHE_TTL secondes :
     aucun visiteur n'attend jamais FIRMS (~plusieurs secondes) ni Open-Meteo.
     En cas d'échec d'un cycle, l'ancien cache reste servi (avec son
     fetched_at_utc d'origine — pas de fausse fraîcheur) et on réessaie au
-    cycle suivant."""
+    cycle suivant. Le cumul national EFFIS (hebdomadaire) n'est rafraîchi
+    qu'une fois par heure."""
+    last_national = 0.0
     while True:
         try:
             _store_fires(build_payload())
@@ -453,6 +523,12 @@ def refresh_loop():
             _store_wind(build_wind())
         except Exception:
             pass
+        if time.time() - last_national >= NATIONAL_TTL:
+            try:
+                _store_national(build_national())
+                last_national = time.time()
+            except Exception:
+                pass
         time.sleep(CACHE_TTL)
 
 
@@ -541,6 +617,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(get_wind())
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=502)
+        elif self.path.startswith("/api/national"):
+            try:
+                self._send_json(get_national())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=502)
         elif self.path.startswith("/api/situation"):
             # Relecture disque à chaque requête (pas de cache) : mise à jour à chaud.
             try:
@@ -559,6 +640,9 @@ class Handler(SimpleHTTPRequestHandler):
                 "evacuations": evacuations,
                 "zones": zones,
                 "zones_updated": situation.get("updated") if situation else None,
+                "total_national_ha": situation.get("total_national_ha") if situation else None,
+                "total_national_note": situation.get("total_national_note") if situation else None,
+                "total_national_source": situation.get("total_national_source") if situation else None,
                 "served_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
         else:
