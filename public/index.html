@@ -1068,7 +1068,7 @@ function foyerPopup(f, now){
   if (m){
     html += `<hr class="sep"><div class="sub">Météo en direct</div>
       <k>Température</k>${m.temperature_2m != null ? Math.round(m.temperature_2m) + ' °C' : 'n.c.'}<br>
-      <k>Humidité</k>${m.relative_humidity_2m != null ? Math.round(m.relative_humidity_2m) + ' %' : 'n.c.'}<br>
+      <k>Humidité</k>${m.relative_humidity_2m != null ? Math.round(m.relative_humidity_2m) + ' %' : 'n.c.'}${m.vapour_pressure_deficit != null ? ' · VPD ' + (Math.round(m.vapour_pressure_deficit * 10) / 10) + ' kPa' : ''}<br>
       <k>Vent</k>${m.wind_speed_10m != null ? Math.round(m.wind_speed_10m) + ' km/h' : 'n.c.'} · rafales ${m.wind_gusts_10m != null ? Math.round(m.wind_gusts_10m) + ' km/h' : 'n.c.'}`;
     if (m.wind_direction_10m != null)
       html += `<br><k>Direction</k>${windArrow(m.wind_direction_10m)} de ${cardinal(m.wind_direction_10m)}`;
@@ -1079,7 +1079,7 @@ function foyerPopup(f, now){
   if (ind){
     html += `<hr class="sep"><div class="sub">Conditions de propagation (indice indicatif, non officiel)</div>
       <span style="color:${indiceColor(ind.level)};font-weight:700">${esc(ind.label)}</span>
-      <span style="color:var(--faint)"> — vent ${ind.wind} km/h, rafales ${ind.gust} km/h, humidité ${ind.hum} %</span>`;
+      <span style="color:var(--faint)"> — vent ${ind.wind} km/h, rafales ${ind.gust} km/h, humidité ${ind.hum} %${ind.vpd != null ? ', VPD ' + ind.vpd + ' kPa' : ''}</span>`;
   }
   const pg = plumeGeoms[f.id];
   if (pg && pg.hits.length)
@@ -1214,11 +1214,17 @@ function foyerIndice(fc, idx){
   const w = fc.wind_speed_10m && fc.wind_speed_10m[idx];
   const h = fc.relative_humidity_2m && fc.relative_humidity_2m[idx];
   if (g == null || w == null || h == null) return null;
+  // VPD (déficit de pression de vapeur, kPa) : sécheresse de l'air ressentie par la végétation.
+  // > ~1,5 kPa = air asséchant, > ~3 kPa = conditions très favorables au feu. Fourni par AROME.
+  const vpd = fc.vapour_pressure_deficit && fc.vapour_pressure_deficit[idx];
   let level, label;
-  if (g >= 45 || (w >= 30 && h <= 35)){ level = 'defavorable'; label = 'défavorable'; }
-  else if (w >= 20 || h <= 45){ level = 'surveiller'; label = 'à surveiller'; }
-  else { level = 'modere'; label = 'modéré'; }
-  return {level, label, gust: Math.round(g), wind: Math.round(w), hum: Math.round(h)};
+  if (g >= 45 || (w >= 30 && h <= 35) || (vpd != null && vpd >= 3 && w >= 20)){
+    level = 'defavorable'; label = 'défavorable';
+  } else if (w >= 20 || h <= 45 || (vpd != null && vpd >= 2)){
+    level = 'surveiller'; label = 'à surveiller';
+  } else { level = 'modere'; label = 'modéré'; }
+  return {level, label, gust: Math.round(g), wind: Math.round(w), hum: Math.round(h),
+          vpd: (vpd != null ? Math.round(vpd * 10) / 10 : null)};
 }
 function indiceColor(level){
   const c = colors();
@@ -1721,9 +1727,11 @@ async function loadMeteo(){
   }
   const lats = picked.map(f => f.lat.toFixed(4)).join(',');
   const lons = picked.map(f => f.lon.toFixed(4)).join(',');
-  const vars = 'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
+  const vars = 'temperature_2m,relative_humidity_2m,vapour_pressure_deficit,wind_speed_10m,wind_gusts_10m,wind_direction_10m';
+  // AROME France HD (~1,5 km, Météo-France) : bien plus précis que le modèle global sur la métropole.
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lats + '&longitude=' + lons +
-    '&current=' + vars + '&hourly=' + vars + '&forecast_hours=12&timezone=Europe%2FParis';
+    '&current=' + vars + '&hourly=' + vars +
+    '&models=meteofrance_arome_france_hd&forecast_hours=12&timezone=Europe%2FParis';
   try{
     const r = await fetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);

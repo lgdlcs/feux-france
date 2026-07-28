@@ -384,10 +384,12 @@ def build_wind():
     lats = ",".join(f"{p[0]}" for p in pts)
     lons = ",".join(f"{p[1]}" for p in pts)
     # Commas littérales (Open-Meteo les attend telles quelles), un seul appel avec courant et prévisions.
+    # AROME France HD (~1,5 km, Météo-France) plutôt que le modèle global : bien plus fin sur la métropole.
     url = ("https://api.open-meteo.com/v1/forecast?latitude=" + lats +
            "&longitude=" + lons +
            "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
            "&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
+           "&models=meteofrance_arome_france_hd" +
            "&forecast_hours=13" +
            "&timezone=Europe%2FParis")
     req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
