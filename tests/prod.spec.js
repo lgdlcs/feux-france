@@ -77,6 +77,22 @@ test.describe('Front prod', () => {
     }
   });
 
+  test('vignette de partage : balises Open Graph + Twitter Card servies', async ({ page }) => {
+    const html = await (await page.request.get(BASE)).text();
+    // Balises meta présentes dans le <head>.
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain('property="og:image"');
+    expect(html).toContain('https://carte-incendies.fr/og-image.jpg');
+    expect(html).toContain('name="twitter:card"');
+    expect(html).toContain('summary_large_image');
+    // L'image OG existe réellement, est un JPEG et fait ~1200×630.
+    const img = await page.request.get(`${BASE}/og-image.jpg`);
+    expect(img.ok()).toBeTruthy();
+    expect(img.headers()['content-type']).toContain('image/jpeg');
+    const buf = await img.body();
+    expect(buf.length).toBeGreaterThan(10000); // pas un fichier vide/placeholder
+  });
+
   test('bouton Contribuer open source pointe vers le dépôt GitHub', async ({ page }) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     const btn = page.locator('#contrib-btn');
