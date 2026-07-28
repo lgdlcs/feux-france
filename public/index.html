@@ -74,7 +74,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
 #wind-canvas{
   position:absolute;inset:0;pointer-events:none;z-index:1;
 }
-.mapboxgl-marker{z-index:2}
 .mapboxgl-popup{z-index:6}
 
 /* ---------- HUD verre en haut à droite ---------- */
@@ -129,6 +128,17 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
 }
 .wl-state b{color:var(--txt);font-weight:600}
 .wl-state.fut b{color:var(--ember)}
+/* légende moyens aériens (visible seulement quand la couche avions est ON) */
+#hud-avions{display:none}
+#hud-avions.on{display:block}
+.av-leg{
+  display:flex;align-items:center;gap:8px;padding:3px 0;
+  font-family:var(--sans);font-size:12px;color:var(--dim);
+}
+.av-dot{width:11px;height:11px;border-radius:50%;flex:none;box-shadow:0 0 0 1px rgba(0,0,0,.25) inset}
+.av-note{
+  margin-top:7px;font-family:var(--sans);font-size:10px;line-height:1.35;color:var(--faint);
+}
 /* fond de carte : 3 boutons texte */
 .hud-bases{display:flex;gap:6px}
 .base-btn{
@@ -297,48 +307,9 @@ h2{
 .srcs{margin-top:10px;font-size:11px;color:var(--faint);line-height:1.7}
 .srcs a{color:var(--dim)}
 
-/* ---------- marqueurs personnalisés (Mapbox Marker) ----------
-   ATTENTION : Mapbox pose SON PROPRE `transform: translate(...)` sur
-   l'élément RACINE du Marker (la classe .mapboxgl-marker qu'il ajoute) pour
-   le positionner. Il ne faut donc JAMAIS appliquer d'animation ni de
-   transform CSS à l'élément racine passé au Marker (ici .foyer-icon /
-   .evac-icon-wrap / .ops-badge) : cela écraserait le positionnement et ferait
-   dériver le marqueur. On anime / transforme uniquement les ENFANTS
-   (.foyer-ring, .foyer-flame, .evac-tri). */
-.foyer-icon{position:absolute;width:34px;height:34px}
-.foyer-flame{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  font-size:18px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));
-}
-.foyer-ring{
-  position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;
-  border-radius:50%;border:2px solid var(--ring-col,var(--fire));animation:ring 1.8s ease-out infinite;
-}
-@keyframes ring{0%{transform:scale(.45);opacity:.9}100%{transform:scale(1.7);opacity:0}}
-.evac-icon-wrap{position:absolute;width:22px;height:20px}
-.evac-tri{
-  position:absolute;left:50%;top:0;transform:translateX(-50%);
-  width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;
-  border-bottom:19px solid var(--ember);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));
-}
-.evac-tri::after{
-  content:"!";position:absolute;left:-3px;top:6px;color:#fff;font-weight:800;font-size:11px;
-}
-.ops-badge{
-  position:absolute;font-family:var(--mono);font-size:11px;font-weight:600;
-  color:var(--txt);background:var(--panel);border:1px solid var(--ember);
-  border-radius:20px;padding:3px 9px;white-space:nowrap;cursor:pointer;
-  box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;gap:6px;
-}
-/* moyens aériens : marker orienté selon le cap + trace GPS */
-.avion-pin{
-  position:absolute;width:26px;height:26px;left:-13px;top:-13px;
-  display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;
-  background:var(--panel);border:1.5px solid #ff5a2c;border-radius:50%;
-  box-shadow:0 1px 6px rgba(0,0,0,.45);transition:transform .3s ease;
-}
-.avion-pin.helico{border-color:#42d0c8}
-.avion-pin .rot{display:inline-block;transition:transform .3s ease}
+/* Foyers, évacuations, opérations et moyens aériens sont désormais rendus en
+   couches Mapbox (canvas/WebGL), plus aucun mapboxgl.Marker HTML : voir
+   installLayers() et les fonctions renderFoyers/renderEvac/renderOps/renderAvions. */
 
 /* popup Mapbox — même apparence que l'ancien popup Leaflet */
 .mapboxgl-popup-content{
@@ -464,7 +435,6 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
 }
 
 @media (prefers-reduced-motion:reduce){
-  .foyer-ring{animation:none}
   .live::before{animation:none}
   .flame{animation:none}
   #wind-canvas{display:none}   /* particules remplacées par les points de grille statiques (couche circle) */
@@ -559,6 +529,7 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
       <div class="wl-ticks"><span>0</span><span>20</span><span>40</span><span>60</span></div>
       <div class="wl-state" id="wl-state">vent actuel</div>
     </div>
+    <div class="hud-card" id="hud-avions"><!-- rempli par updateAvionLegend() --></div>
     <div class="hud-card">
       <div class="hud-h">Fond de carte</div>
       <div class="hud-bases">
@@ -599,11 +570,9 @@ const STYLES = {
   topo: {dark:'mapbox://styles/mapbox/outdoors-v12',          light:'mapbox://styles/mapbox/outdoors-v12'},
 };
 
-/* Mobile : tout est clos par défaut (panneau replié, la carte d'abord).
+/* Panneau latéral clos par défaut (la carte d'abord), sur tous les écrans.
    Fait avant le premier rendu → pas d'animation de fermeture au chargement. */
-if (window.matchMedia && window.matchMedia('(max-width:720px)').matches) {
-  document.getElementById('panel').classList.add('closed');
-}
+document.getElementById('panel').classList.add('closed');
 
 // Défaut : clair, sauf si l'utilisateur a déjà choisi un thème, ou si sa config
 // système préfère le sombre (prefers-color-scheme). Choix explicite = prioritaire.
@@ -677,11 +646,8 @@ let situation = {evac:[], evacUpdated:null, zones:[]};
 let meteoByFoyer = {};     // id -> current météo Open-Meteo
 let forecastByFoyer = {};  // id -> hourly (12 h) Open-Meteo
 let meteoFetchedAt = null; // Date de la dernière récupération météo
-let foyerMarkers = {};     // id -> Marker (reconstruit à chaque render)
-let evacMarkers = [];      // ⚠ communes évacuées (indépendants de la frise)
-let opsMarkers  = [];      // 🚒 opérations en cours
-let avionMarkers = {};     // hex -> Marker (moyens aériens Sécurité Civile)
-let avionData  = [];       // dernier instantané /api/aircraft
+let foyerPopupObj = null;  // popup foyer ouvert depuis le panneau / clic couche
+let avionData  = [];       // dernier instantané /api/aircraft (format v2 : category + trace [[t,lat,lon]])
 let windData   = null;     // GeoJSON des points de grille vent (zone de clic + points statiques)
 let windPoints = [];       // points bruts /api/wind v2 (lat,lon,speed,dir,gust,h_speed,h_dir,h_gust)
 let windMeta   = {hourly_times:[], fetched_at_utc:null, hasHourly:false};
@@ -689,6 +655,7 @@ let windField  = null;     // champ interpolé courant {sample(lat,lon), step, o
 let windUseIdx = null;     // index horaire utilisé (null = vent courant speed/dir)
 let burnedData = null;     // GeoJSON des zones brûlées (chargé en lazy)
 let detPopup   = null;     // popup de détection ouvert (fermé au scrub)
+let miscPopup  = null;     // popup unique évac / ops / avions (remplacé à chaque clic)
 let conePopup  = null;     // popup de survol des cônes
 
 /* Couches togglables — défauts : toutes activées (le choix utilisateur sauvegardé prime). */
@@ -750,7 +717,26 @@ function colors(){
     warm: s.getPropertyValue('--warm').trim(),
     cool: s.getPropertyValue('--cool').trim(),
     burn: s.getPropertyValue('--burn').trim(),
+    txt:  s.getPropertyValue('--txt').trim(),
+    bg:   s.getPropertyValue('--bg').trim(),
+    panel:s.getPropertyValue('--panel').trim(),
   };
+}
+
+/* Code couleur par catégorie de moyen aérien (spec). `autre` passe au gris
+   sombre en thème clair pour rester lisible (comme la rampe vent). */
+function catColors(){
+  return {
+    canadair:'#ff4820', dash:'#ffc93c', helico:'#42d0c8', liaison:'#b48cff',
+    autre: theme === 'light' ? '#5b6670' : '#9aa4ad',
+  };
+}
+/* Expression Mapbox : couleur selon la propriété `category` d'une feature. */
+function catColorExpr(){
+  const c = catColors();
+  return ['match', ['get','category'],
+    'canadair', c.canadair, 'dash', c.dash, 'helico', c.helico, 'liaison', c.liaison,
+    c.autre];
 }
 
 /* Instant T sélectionné (ms). SLIDER_NOW = maintenant ; peut dépasser
@@ -790,9 +776,83 @@ function refreshFires(){
 }
 
 /* ============================================================
+   Icônes générées sur canvas (rendu WebGL via map.addImage) — remplacent tous
+   les markers HTML. Silhouettes avions = masque alpha teintable (sdf:true) ;
+   emoji foyer/évac = images couleur (non-SDF). Générées UNE fois puis re-ajoutées
+   à chaque style.load (les images custom sont détruites par setStyle).
+   ============================================================ */
+const staticImg = {};   // name -> {data:ImageData, sdf, pixelRatio}
+function makeCanvas(px){ const c = document.createElement('canvas'); c.width = px; c.height = px; return c; }
+function roundRect(x, rx, ry, w, h, r){
+  x.beginPath();
+  x.moveTo(rx + r, ry); x.arcTo(rx + w, ry, rx + w, ry + h, r);
+  x.arcTo(rx + w, ry + h, rx, ry + h, r); x.arcTo(rx, ry + h, rx, ry, r);
+  x.arcTo(rx, ry, rx + w, ry, r); x.closePath();
+}
+/* Emoji rasterisé (2× dpr), image couleur. `shadow` : ombre portée douce. */
+function emojiImg(emoji, displayPx, shadow){
+  const s = displayPx * 2, cv = makeCanvas(s), x = cv.getContext('2d');
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = Math.round(displayPx * 1.55) + "px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";
+  if (shadow){ x.shadowColor = 'rgba(0,0,0,.6)'; x.shadowBlur = 3; x.shadowOffsetY = 1; }
+  x.fillText(emoji, s / 2, s / 2 + s * 0.02);
+  return x.getImageData(0, 0, s, s);
+}
+/* Silhouette avion vue de dessus, nez vers le NORD (blanc opaque → masque alpha
+   pour SDF, teinté par icon-color). icon-rotate=cap orientera correctement. */
+function planeMask(){
+  const S = 96, cv = makeCanvas(S), x = cv.getContext('2d'), u = S / 100;
+  x.fillStyle = '#fff'; x.translate(S / 2, S / 2);
+  roundRect(x, -5 * u, -42 * u, 10 * u, 82 * u, 5 * u); x.fill();      // fuselage
+  x.beginPath();                                                       // ailes
+  x.moveTo(-4 * u, -8 * u); x.lineTo(-46 * u, 12 * u); x.lineTo(-46 * u, 20 * u);
+  x.lineTo(-4 * u, 6 * u); x.lineTo(4 * u, 6 * u); x.lineTo(46 * u, 20 * u);
+  x.lineTo(46 * u, 12 * u); x.lineTo(4 * u, -8 * u); x.closePath(); x.fill();
+  x.beginPath();                                                       // empennage
+  x.moveTo(-3 * u, 26 * u); x.lineTo(-19 * u, 38 * u); x.lineTo(-19 * u, 42 * u);
+  x.lineTo(-3 * u, 34 * u); x.lineTo(3 * u, 34 * u); x.lineTo(19 * u, 42 * u);
+  x.lineTo(19 * u, 38 * u); x.lineTo(3 * u, 26 * u); x.closePath(); x.fill();
+  return x.getImageData(0, 0, S, S);
+}
+/* Silhouette hélico vue de dessus (rotor en croix + fuselage). Pas d'orientation. */
+function helicoMask(){
+  const S = 96, cv = makeCanvas(S), x = cv.getContext('2d'), u = S / 100;
+  x.fillStyle = '#fff'; x.translate(S / 2, S / 2);
+  roundRect(x, -9 * u, -26 * u, 18 * u, 52 * u, 9 * u); x.fill();      // fuselage
+  roundRect(x, -3 * u, 20 * u, 6 * u, 24 * u, 3 * u); x.fill();        // poutre de queue
+  roundRect(x, -8 * u, 40 * u, 16 * u, 5 * u, 2 * u); x.fill();        // rotor de queue
+  roundRect(x, -44 * u, -3 * u, 88 * u, 6 * u, 3 * u); x.fill();       // pale rotor 1
+  roundRect(x, -3 * u, -44 * u, 6 * u, 88 * u, 3 * u); x.fill();       // pale rotor 2
+  return x.getImageData(0, 0, S, S);
+}
+/* Rond plein : appareil dont le cap est inconnu (pas de silhouette orientée
+   arbitrairement vers le nord — on ne suggère pas un cap qu'on ne connaît pas). */
+function dotMask(){
+  const S = 96, cv = makeCanvas(S), x = cv.getContext('2d');
+  x.fillStyle = '#fff';
+  x.beginPath(); x.arc(S / 2, S / 2, 22, 0, Math.PI * 2); x.fill();
+  return x.getImageData(0, 0, S, S);
+}
+function ensureStaticImages(){
+  if (!staticImg['av-plane'])  staticImg['av-plane']  = {data:planeMask(),  sdf:true,  pixelRatio:2};
+  if (!staticImg['av-helico']) staticImg['av-helico'] = {data:helicoMask(), sdf:true,  pixelRatio:2};
+  if (!staticImg['av-dot'])    staticImg['av-dot']    = {data:dotMask(),    sdf:true,  pixelRatio:2};
+  if (!staticImg['ic-flame'])  staticImg['ic-flame']  = {data:emojiImg('🔥', 30, true), sdf:false, pixelRatio:2};
+  if (!staticImg['ic-evac'])   staticImg['ic-evac']   = {data:emojiImg('⚠️', 22, true), sdf:false, pixelRatio:2};
+  Object.keys(staticImg).forEach(n => {
+    if (!map.hasImage(n)){ const s = staticImg[n]; map.addImage(n, s.data, {sdf:s.sdf, pixelRatio:s.pixelRatio}); }
+  });
+}
+/* Police du fond réutilisée pour le badge foyer (glyphes garantis dans le style). */
+function styleTextFont(){
+  const ls = (map.getStyle() && map.getStyle().layers) || [];
+  for (const l of ls){ const f = l.layout && l.layout['text-font']; if (Array.isArray(f)) return f; }
+  return ['Open Sans Regular', 'Arial Unicode MS Regular'];
+}
+
+/* ============================================================
    Installation des couches — TOUT est (ré)ajouté ici, appelé à chaque
    'style.load' (setStyle() détruit sources/layers/images custom).
-   Les Markers HTML (🔥 ⚠ 🚒) survivent au setStyle (DOM) : pas de rebuild ici.
    ============================================================ */
 function firstSymbolId(){
   const ls = (map.getStyle() && map.getStyle().layers) || [];
@@ -817,6 +877,7 @@ function installLayers(){
   const before = firstSymbolId();   // nos couches data passent SOUS les labels de villes
 
   ensureWindCanvas();
+  ensureStaticImages();             // (ré)ajoute les icônes canvas (détruites par setStyle)
 
   // --- sources ---
   if (burnedData && !map.getSource('burned')) map.addSource('burned', {type:'geojson', data:burnedData});
@@ -824,7 +885,12 @@ function installLayers(){
   if (!map.getSource('fires')) map.addSource('fires', {type:'geojson', data:firesGeoJSON()});
   else refreshFires();
   if (!map.getSource('cones')) map.addSource('cones', {type:'geojson', data:emptyFC()});
+  if (!map.getSource('foyers')) map.addSource('foyers', {type:'geojson', data:emptyFC()});
+  if (!map.getSource('foyers-ring')) map.addSource('foyers-ring', {type:'geojson', data:emptyFC()});
+  if (!map.getSource('evac')) map.addSource('evac', {type:'geojson', data:emptyFC()});
+  if (!map.getSource('ops')) map.addSource('ops', {type:'geojson', data:emptyFC()});
   if (!map.getSource('avions-traces')) map.addSource('avions-traces', {type:'geojson', data:emptyFC()});
+  if (!map.getSource('avions-pos')) map.addSource('avions-pos', {type:'geojson', data:emptyFC()});
   if (!map.getSource('wind'))  map.addSource('wind',  {type:'geojson', data:windData || emptyFC()});
 
   // --- couches, dans l'ordre : burned < hulls < fires < cones < (labels) < wind ---
@@ -856,14 +922,59 @@ function installLayers(){
     map.addLayer({id:'cones-line', type:'line', source:'cones',
       paint:{'line-color':colors().ember, 'line-width':1.2, 'line-opacity':0.85, 'line-dasharray':[2,2]}}, before);
   }
-  // Traces GPS des moyens aériens (3 h glissantes) : orange (avion) / cyan (hélico).
+  // Traces GPS des moyens aériens (3 h glissantes) — couleur par catégorie (sous les icônes).
   if (!map.getLayer('avions-traces-line')){
     map.addLayer({id:'avions-traces-line', type:'line', source:'avions-traces',
       layout:{'line-cap':'round', 'line-join':'round'},
+      paint:{'line-color':catColorExpr(), 'line-width':2, 'line-opacity':0.7}}, before);
+  }
+  // Anneau pulsant des foyers (animé par updateRingEngine) — sous l'icône flamme.
+  if (!map.getLayer('foyers-ring')){
+    map.addLayer({id:'foyers-ring', type:'circle', source:'foyers-ring',
       paint:{
-        'line-color':['case', ['==',['get','helico'],1], '#42d0c8', '#ff5a2c'],
-        'line-width':2, 'line-opacity':0.7,
+        'circle-radius':7, 'circle-color':'rgba(0,0,0,0)',
+        'circle-stroke-color':['get','ringColor'], 'circle-stroke-width':2,
+        'circle-stroke-opacity':0.6,
       }}, before);
+  }
+  // Foyers 🔥 : icône flamme (2 tailles selon n) + badge « n · X ha ».
+  if (!map.getLayer('foyers-icon')){
+    const c = colors();
+    map.addLayer({id:'foyers-icon', type:'symbol', source:'foyers',
+      layout:{
+        'icon-image':'ic-flame',
+        'icon-size':['case', ['>=', ['coalesce',['get','n'],0], 8], 0.95, 0.62],
+        'icon-allow-overlap':true,
+        'text-field':['get','badge'], 'text-font':styleTextFont(),
+        'text-size':11, 'text-offset':[0,1.1], 'text-anchor':'top',
+        'text-optional':true,
+      },
+      paint:{'text-color':c.txt, 'text-halo-color':c.bg, 'text-halo-width':1.3}}, before);
+  }
+  // Évacuations ⚠
+  if (!map.getLayer('evac-icons')){
+    map.addLayer({id:'evac-icons', type:'symbol', source:'evac',
+      layout:{'icon-image':'ic-evac', 'icon-size':0.85, 'icon-anchor':'bottom',
+              'icon-allow-overlap':true}}, before);
+  }
+  // Opérations 🚒 (pastille dessinée sur canvas, image par zone)
+  if (!map.getLayer('ops-icons')){
+    map.addLayer({id:'ops-icons', type:'symbol', source:'ops',
+      layout:{'icon-image':['get','img'], 'icon-anchor':'left', 'icon-offset':[10,0],
+              'icon-allow-overlap':true}}, before);
+  }
+  // Moyens aériens : silhouette SDF teintée par catégorie, orientée selon le cap.
+  if (!map.getLayer('avions-icons')){
+    map.addLayer({id:'avions-icons', type:'symbol', source:'avions-pos',
+      layout:{
+        'icon-image':['case',
+          ['==',['get','helico'],1], 'av-helico',
+          ['==',['get','notrack'],1], 'av-dot',     // cap inconnu : rond, pas de silhouette orientée
+          'av-plane'],
+        'icon-size':0.5, 'icon-rotate':['get','track'], 'icon-rotation-alignment':'map',
+        'icon-allow-overlap':true,
+      },
+      paint:{'icon-color':catColorExpr()}}, before);
   }
   // Couche circle des points de grille vent :
   //  - mode normal : quasi invisible, sert uniquement de zone de clic → popup
@@ -883,10 +994,12 @@ function installLayers(){
 
   applyDataColors();
   applyLayerVisibility();
-  render();                 // pose les filtres/couleurs des détections + hulls/cônes + markers 🔥
+  render();                 // filtres/couleurs détections + hulls/cônes + foyers + avions
+  renderEvac();             // couche ⚠ (indépendante de la frise)
+  renderOps();              // couche 🚒 (régénère les pastilles canvas)
   loadWindIfNeeded();       // (re)charge les vents si la couche est active
   if (layers.burned) loadBurnedIfNeeded();  // idem zones brûlées (persistance + re-setStyle)
-  if (avionData.length) renderAvionMarkers(); else if (layers.avions) loadAircraft();
+  if (!avionData.length && layers.avions) loadAircraft();
 }
 
 /* Recolore les couches data selon le thème courant (variables CSS). */
@@ -898,6 +1011,12 @@ function applyDataColors(){
   if (map.getLayer('cones-line')) map.setPaintProperty('cones-line','line-color', c.ember);
   if (map.getLayer('burned-fill')) map.setPaintProperty('burned-fill','fill-color', c.burn);
   if (map.getLayer('burned-line')) map.setPaintProperty('burned-line','line-color', c.burn);
+  if (map.getLayer('foyers-icon')){
+    map.setPaintProperty('foyers-icon','text-color', c.txt);
+    map.setPaintProperty('foyers-icon','text-halo-color', c.bg);
+  }
+  if (map.getLayer('avions-traces-line')) map.setPaintProperty('avions-traces-line','line-color', catColorExpr());
+  if (map.getLayer('avions-icons')) map.setPaintProperty('avions-icons','icon-color', catColorExpr());
 }
 
 /* ============================================================
@@ -990,6 +1109,53 @@ function bindInteractions(){
         </div>`)
       .addTo(map);
   });
+
+  // foyers 🔥 : popup identique à l'ancien marker (météo, indice, sous le vent…).
+  // L'anneau est cliquable aussi (cible ~52 px comme l'ancien marker 34 px).
+  const foyerClick = e => {
+    const id = e.features[0].properties.id;
+    const f = foyers.find(x => String(x.id) === String(id));
+    if (f) openFoyerPopup(f, e.lngLat);
+  };
+  ['foyers-icon','foyers-ring'].forEach(l => {
+    map.on('mouseenter', l, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', l, () => { map.getCanvas().style.cursor = ''; });
+  });
+  map.on('click','foyers-icon', foyerClick);
+  map.on('click','foyers-ring', e => {
+    // Si l'icône est aussi sous le clic, son handler s'en charge (pas de doublon).
+    if (map.queryRenderedFeatures(e.point, {layers:['foyers-icon']}).length) return;
+    foyerClick(e);
+  });
+
+  // Popup unique pour évac/ops/avions : un nouveau clic remplace le précédent.
+  const openMiscPopup = (opts, lngLat, html) => {
+    if (miscPopup) miscPopup.remove();
+    miscPopup = new mapboxgl.Popup(opts).setLngLat(lngLat).setHTML(html).addTo(map);
+  };
+
+  // évacuations ⚠
+  map.on('mouseenter','evac-icons', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave','evac-icons', () => { map.getCanvas().style.cursor = ''; });
+  map.on('click','evac-icons', e => {
+    const ev = situation.evac[+e.features[0].properties.i];
+    if (ev) openMiscPopup({offset:16, maxWidth:'300px'}, e.lngLat, evacPopupHTML(ev));
+  });
+
+  // opérations 🚒
+  map.on('mouseenter','ops-icons', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave','ops-icons', () => { map.getCanvas().style.cursor = ''; });
+  map.on('click','ops-icons', e => {
+    const z = situation.zones[+e.features[0].properties.i];
+    if (z) openMiscPopup({offset:12, maxWidth:'320px'}, e.lngLat, zonePopupHTML(z));
+  });
+
+  // moyens aériens : popup identique (immat, type, altitude, vitesse)
+  map.on('mouseenter','avions-icons', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave','avions-icons', () => { map.getCanvas().style.cursor = ''; });
+  map.on('click','avions-icons', e => {
+    openMiscPopup({offset:14, maxWidth:'260px'}, e.lngLat, avionPopupHTML(e.features[0].properties));
+  });
 }
 
 /* ============================================================
@@ -1047,23 +1213,14 @@ function render(){
   const hsrc = map.getSource('hulls');
   if (hsrc) hsrc.setData({type:'FeatureCollection', features:hullFeats});
 
-  /* --- foyers actifs 🔥 (Markers HTML reconstruits) --- */
-  Object.values(foyerMarkers).forEach(m => m.remove());
-  foyerMarkers = {};
-  foyers.forEach(f => {
-    if (!foyerEligible(f, T)) return;
-    const el = document.createElement('div');
-    el.className = 'foyer-icon';
-    el.innerHTML = '<span class="foyer-ring"></span><span class="foyer-flame">🔥</span>';
-    const mk = new mapboxgl.Marker({element:el, anchor:'center'})
-      .setLngLat([f.lon, f.lat])
-      .setPopup(new mapboxgl.Popup({offset:20, maxWidth:'320px'}).setHTML(foyerPopup(f, now)))
-      .addTo(map);
-    foyerMarkers[f.id] = mk;
-  });
-
   /* --- panaches de propagation horaires + indice conditions (dépendent de T) --- */
   drawPlumes(now, T);
+
+  /* --- foyers 🔥 (couche symbol + anneau, teinte selon l'indice à l'heure idx) --- */
+  renderFoyers(T, forecastIndex(now, T));
+
+  /* --- moyens aériens (positions/traces clippées à l'instant sélectionné) --- */
+  renderAvions();
 
   /* --- champ de vent au temps sélectionné (particules + légende) --- */
   if (layers.wind && windPoints.length) updateWindField();
@@ -1314,16 +1471,74 @@ function drawPlumes(now, T){
   });
   const src = map.getSource('cones');
   if (src) src.setData({type:'FeatureCollection', features:feats});
-  applyFoyerIndices(idx);
 }
 
-/* Teinte l'anneau du marker 🔥 selon l'indice de conditions à l'heure idx. */
-function applyFoyerIndices(idx){
+/* ============================================================
+   Foyers 🔥 : couche symbol (flamme + badge) + anneau pulsant (couche circle).
+   Remplace les anciens markers HTML. idx = heure de prévision pour la teinte
+   de l'anneau (indice de conditions).
+   ============================================================ */
+let foyerRingCount = 0;
+function renderFoyers(T, idx){
+  const feats = [];
   foyers.forEach(f => {
-    const mk = foyerMarkers[f.id]; if (!mk) return;
+    if (!foyerEligible(f, T)) return;
     const ind = foyerIndice(forecastByFoyer[f.id], idx);
-    mk.getElement().style.setProperty('--ring-col', ind ? indiceColor(ind.level) : '');
+    const ringColor = ind ? indiceColor(ind.level) : colors().fire;
+    const badge = f.n != null
+      ? (f.est_area_ha != null ? f.n + ' · ' + Math.round(f.est_area_ha) + ' ha' : String(f.n))
+      : '';
+    feats.push({type:'Feature', geometry:{type:'Point', coordinates:[f.lon, f.lat]},
+      properties:{id:f.id, n:(f.n != null ? f.n : 0), badge, ringColor}});
   });
+  const fc = {type:'FeatureCollection', features:feats};
+  const s1 = map.getSource('foyers');      if (s1) s1.setData(fc);
+  const s2 = map.getSource('foyers-ring'); if (s2) s2.setData(fc);
+  foyerRingCount = feats.length;
+  updateRingEngine();
+}
+
+/* Popup foyer (contenu identique à l'ancien marker), ouvert depuis un clic
+   couche ou une carte du panneau. Un seul à la fois. */
+function openFoyerPopup(f, lngLat){
+  if (foyerPopupObj) foyerPopupObj.remove();
+  foyerPopupObj = new mapboxgl.Popup({offset:20, maxWidth:'320px'})
+    .setLngLat(lngLat || [f.lon, f.lat])
+    .setHTML(foyerPopup(f, Date.now()))
+    .addTo(map);
+}
+
+/* --- Anneau pulsant : UNE rAF throttlée anime circle-radius/opacity.
+   Coupée si onglet caché ou prefers-reduced-motion (anneau statique). --- */
+let ringRaf = null, ringLast = 0;
+function ringRunning(){
+  return foyerRingCount > 0 && !reducedMotion() && document.visibilityState === 'visible';
+}
+function setStaticRing(){
+  // isStyleLoaded : pendant un setStyle, setPaintProperty jette « Style is not done loading ».
+  if (!map.isStyleLoaded() || !map.getLayer('foyers-ring')) return;
+  map.setPaintProperty('foyers-ring','circle-radius', 15);
+  map.setPaintProperty('foyers-ring','circle-stroke-opacity', 0.5);
+}
+function ringFrame(ts){
+  ringRaf = null;
+  if (!ringRunning()){ setStaticRing(); return; }
+  if (ts - ringLast >= 40 && map.isStyleLoaded() && map.getLayer('foyers-ring')){   // ~25 fps ; muet pendant un setStyle
+    ringLast = ts;
+    const phase = (ts % 1800) / 1800;              // cycle 1,8 s (comme l'ancien @keyframes)
+    map.setPaintProperty('foyers-ring','circle-radius', 7 + phase * 19);
+    map.setPaintProperty('foyers-ring','circle-stroke-opacity', 0.9 * (1 - phase));
+  }
+  ringRaf = requestAnimationFrame(ringFrame);
+}
+function updateRingEngine(){
+  if (!map.getLayer('foyers-ring')) return;
+  if (ringRunning()){
+    if (!ringRaf) ringRaf = requestAnimationFrame(ringFrame);
+  } else {
+    if (ringRaf){ cancelAnimationFrame(ringRaf); ringRaf = null; }
+    setStaticRing();
+  }
 }
 
 /* ============================================================
@@ -1465,8 +1680,7 @@ function renderFoyersPanel(){
   box.querySelectorAll('.fcard').forEach(el => el.addEventListener('click', () => {
     const f = foyers.find(x => String(x.id) === el.dataset.id); if (!f) return;
     map.flyTo({center:[f.lon, f.lat], zoom:10});
-    const mk = foyerMarkers[f.id];
-    if (mk && mk.getPopup() && !mk.getPopup().isOpen()) mk.togglePopup();
+    openFoyerPopup(f);
   }));
 }
 function renderZonesPanel(){
@@ -1569,38 +1783,52 @@ function renderFeeds(){
 }
 
 /* ============================================================
-   Marqueurs HTML indépendants de la frise (⚠ évacuations, 🚒 opérations)
+   Couches indépendantes de la frise (⚠ évacuations, 🚒 opérations).
+   Rendues en couches Mapbox ; popups par clic (voir bindInteractions).
    ============================================================ */
-function renderEvacMarkers(){
-  evacMarkers.forEach(m => m.remove());
-  evacMarkers = [];
-  situation.evac.forEach(e => {
-    if (e.lat == null || e.lon == null) return;
-    const src = e.source_url
-      ? `<br><a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source || 'source')} →</a>`
-      : (e.source ? `<br><span style="color:var(--faint)">${esc(e.source)}</span>` : '');
-    const el = document.createElement('div');
-    el.className = 'evac-icon-wrap';
-    el.innerHTML = '<span class="evac-tri"></span>';
-    const mk = new mapboxgl.Marker({element:el, anchor:'bottom'})
-      .setLngLat([e.lon, e.lat])
-      .setPopup(new mapboxgl.Popup({offset:16, maxWidth:'300px'}).setHTML(`
+function evacPopupHTML(e){
+  const src = e.source_url
+    ? `<br><a href="${esc(e.source_url)}" target="_blank" rel="noopener">${esc(e.source || 'source')} →</a>`
+    : (e.source ? `<br><span style="color:var(--faint)">${esc(e.source)}</span>` : '');
+  return `
         <div class="pp">
           <div class="pp-t">⚠ ${esc(e.commune || 'Commune')}</div>
           <k>Département</k>${esc(e.dept || 'n.c.')}<br>
           <k>Statut</k>${esc(e.statut || 'n.c.')}<br>
           <k>Annonce</k>${esc(e.annonce || 'n.c.')}<br>
           <k>Population</k>${e.population != null ? e.population : 'n.c.'}${src}
-        </div>`))
-      .addTo(map);
-    evacMarkers.push(mk);
+        </div>`;
+}
+function renderEvac(){
+  const feats = [];
+  situation.evac.forEach((e, i) => {
+    if (e.lat == null || e.lon == null) return;
+    feats.push({type:'Feature', geometry:{type:'Point', coordinates:[e.lon, e.lat]}, properties:{i}});
   });
+  const s = map.getSource('evac');
+  if (s) s.setData({type:'FeatureCollection', features:feats});
 }
 
-function renderOpsMarkers(){
-  opsMarkers.forEach(m => m.remove());
-  opsMarkers = [];
-  situation.zones.forEach(z => {
+/* Pastille 🚒 dessinée sur canvas (fillText rend les emojis en couleur), image
+   par zone. Régénérée à chaque style.load / changement de thème via renderOps(). */
+function opsPill(text){
+  const fs = 12, h = 24, pad = 9, dpr = 2, FONT = '600 ' + fs + "px 'Barlow Condensed',system-ui,sans-serif";
+  const meas = makeCanvas(1).getContext('2d'); meas.font = FONT;
+  const w = Math.ceil(meas.measureText(text).width) + pad * 2;
+  const cv = document.createElement('canvas'); cv.width = w * dpr; cv.height = h * dpr;
+  const x = cv.getContext('2d'); x.scale(dpr, dpr);
+  const c = colors();
+  roundRect(x, 0.5, 0.5, w - 1, h - 1, h / 2); x.fillStyle = c.panel; x.fill();
+  x.lineWidth = 1; x.strokeStyle = c.ember; x.stroke();
+  x.font = FONT; x.fillStyle = c.txt; x.textBaseline = 'middle';
+  x.fillText(text, pad, h / 2 + 0.5);
+  return {data:x.getImageData(0, 0, cv.width, cv.height), w};
+}
+let opsImgMax = 0;   // nb de pastilles 'ops-N' enregistrées (purge des orphelines)
+function renderOps(){
+  if (!map.getSource('ops')) return;   // couches pas encore installées
+  const feats = [];
+  situation.zones.forEach((z, i) => {
     if (z.lat == null || z.lon == null) return;
     const mo = z.moyens || {};
     const aer = ['canadairs','dash','helicopteres','a400m']
@@ -1608,70 +1836,92 @@ function renderOpsMarkers(){
     const parts = [];
     if (mo.pompiers != null) parts.push('🚒 ' + mo.pompiers);
     if (aer > 0) parts.push('✈️ ' + aer);
-    if (!parts.length) parts.push('🚒 ' + esc(z.nom || 'zone'));
-    const el = document.createElement('div');
-    el.className = 'ops-badge';
-    el.textContent = parts.join(' · ');
-    const mk = new mapboxgl.Marker({element:el, anchor:'left', offset:[10, 0]})
-      .setLngLat([z.lon, z.lat])
-      .setPopup(new mapboxgl.Popup({offset:12, maxWidth:'320px'}).setHTML(zonePopupHTML(z)));
-    opsMarkers.push(mk);
-    if (layers.ops) mk.addTo(map);
+    if (!parts.length) parts.push('🚒 ' + (z.nom || 'zone'));
+    const name = 'ops-' + i, pill = opsPill(parts.join(' · '));
+    if (map.hasImage(name)) map.removeImage(name);
+    map.addImage(name, pill.data, {pixelRatio:2});
+    feats.push({type:'Feature', geometry:{type:'Point', coordinates:[z.lon, z.lat]}, properties:{i, img:name}});
   });
+  // Purge les pastilles devenues orphelines si le nombre de zones a diminué
+  // (les noms 'ops-N' sont indexés sur situation.zones, pas sur feats).
+  for (let i = situation.zones.length; i < opsImgMax; i++)
+    if (map.hasImage('ops-' + i)) map.removeImage('ops-' + i);
+  opsImgMax = situation.zones.length;
+  const s = map.getSource('ops');
+  if (s) s.setData({type:'FeatureCollection', features:feats});
 }
 
 /* ============================================================
    Moyens aériens — flotte Sécurité Civile (Canadair, Dash, hélicos Dragon…).
-   Markers orientés selon le cap + trace GPS (3 h) via /api/aircraft.
+   Couches Mapbox : silhouettes SDF teintées par catégorie + traces (3 h) via
+   /api/aircraft. Liées à la frise : en scrub passé, positions/traces clippées
+   à t ≤ tSel (aucune position inventée). Format v2 : trace = [[t,lat,lon],…].
    ============================================================ */
-function renderAvionTraces(){
-  const feats = [];
+/* Cap (deg, 0 = nord) du segment a→b (coordonnées [lon,lat]). */
+function segBearing(a, b){
+  const r = Math.PI / 180;
+  const y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r);
+  const x = Math.cos(a[1] * r) * Math.sin(b[1] * r)
+          - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+/* Popup avion — contenu strictement identique à l'ancien marker. `p` = feature
+   properties de la couche avions-icons. */
+function avionPopupHTML(p){
+  const hasAlt = p.alt_ft != null && p.alt_ft !== '' && p.alt_ft !== undefined;
+  const alt = hasAlt ? `<k>Altitude</k>${fmtInt.format(p.alt_ft)} ft`
+            : (p.on_ground == 1 ? '<k>Statut</k>au sol' : '');
+  const hasSpd = p.gs_kt != null && p.gs_kt !== '' && p.gs_kt !== undefined;
+  const spd = hasSpd ? `<br><k>Vitesse sol</k>${Math.round(p.gs_kt)} kt` : '';
+  return `
+      <div class="pp">
+        <div class="pp-t">${p.icon || ''} ${esc(p.reg || p.flight || 'Aéronef')}</div>
+        <k>Type</k>${esc(p.kind || 'aéronef')}${p.type ? ' (' + esc(p.type) + ')' : ''}<br>
+        ${alt}${spd}
+      </div>`;
+}
+function renderAvions(){
+  const posFeats = [], traceFeats = [];
   if (layers.avions){
+    const T = currentT(), past = sliderVal < SLIDER_NOW;
     avionData.forEach(a => {
-      if (!Array.isArray(a.trace) || a.trace.length < 2) return;
-      const coords = a.trace.map(p => [p[1], p[0]]);  // [lat,lon] -> [lon,lat]
-      feats.push({type:'Feature', geometry:{type:'LineString', coordinates:coords},
-                  properties:{helico: /hélico/i.test(a.kind || '') ? 1 : 0}});
+      const cat = a.category || 'autre';
+      const helico = cat === 'helico' ? 1 : 0;
+      let posLon, posLat, track = 0, notrack = 0, coords;
+      if (!past){
+        // live/futur : position courante + trace 3 h complète (rien d'inventé au futur).
+        if (a.lat == null || a.lon == null) return;
+        posLon = a.lon; posLat = a.lat;
+        if (!helico && a.track != null) track = a.track;
+        else if (!helico) notrack = 1;   // cap non diffusé : rond, pas de fausse orientation
+        coords = Array.isArray(a.trace) ? a.trace.map(p => [p[2], p[1]]) : [];
+      } else {
+        // passé : trace clippée à t ≤ tSel ; position = dernier point ; sinon masqué.
+        if (!Array.isArray(a.trace) || !a.trace.length) return;
+        const clip = a.trace.filter(p => p[0] * 1000 <= T);
+        if (!clip.length) return;
+        const last = clip[clip.length - 1];
+        posLon = last[2]; posLat = last[1];
+        coords = clip.map(p => [p[2], p[1]]);
+        if (!helico && clip.length >= 2){
+          const prev = clip[clip.length - 2];
+          track = segBearing([prev[2], prev[1]], [last[2], last[1]]);
+        } else if (!helico){
+          notrack = 1;                   // un seul point : cap inconnu à cet instant
+        }
+      }
+      const props = {category:cat, helico, track, notrack,
+        reg:a.reg || '', flight:a.flight || '', kind:a.kind || '',
+        type:a.type || '', icon:a.icon || '', on_ground:a.on_ground ? 1 : 0};
+      if (a.alt_ft != null) props.alt_ft = a.alt_ft;
+      if (a.gs_kt != null)  props.gs_kt = a.gs_kt;
+      posFeats.push({type:'Feature', geometry:{type:'Point', coordinates:[posLon, posLat]}, properties:props});
+      if (coords.length >= 2)
+        traceFeats.push({type:'Feature', geometry:{type:'LineString', coordinates:coords}, properties:{category:cat}});
     });
   }
-  const src = map.getSource('avions-traces');
-  if (src) src.setData({type:'FeatureCollection', features:feats});
-}
-function renderAvionMarkers(){
-  const seen = {};
-  avionData.forEach(a => {
-    if (a.lat == null || a.lon == null) return;
-    seen[a.hex] = true;
-    const helico = /hélico/i.test(a.kind || '');
-    let mk = avionMarkers[a.hex];
-    if (!mk){
-      const el = document.createElement('div');
-      el.className = 'avion-pin' + (helico ? ' helico' : '');
-      el.innerHTML = '<span class="rot">' + (a.icon || (helico ? '🚁' : '✈️')) + '</span>';
-      mk = new mapboxgl.Marker({element:el, anchor:'center'})
-        .setLngLat([a.lon, a.lat])
-        .setPopup(new mapboxgl.Popup({offset:14, maxWidth:'260px'}));
-      avionMarkers[a.hex] = mk;
-    }
-    mk.setLngLat([a.lon, a.lat]);
-    // Oriente l'icône selon le cap (track). Hélico : pas d'orientation (rotor).
-    const rot = mk.getElement().querySelector('.rot');
-    if (rot) rot.style.transform = (!helico && a.track != null) ? `rotate(${a.track}deg)` : '';
-    const alt = a.alt_ft != null ? `<k>Altitude</k>${fmtInt.format(a.alt_ft)} ft` : (a.on_ground ? '<k>Statut</k>au sol' : '');
-    const spd = a.gs_kt != null ? `<br><k>Vitesse sol</k>${Math.round(a.gs_kt)} kt` : '';
-    mk.getPopup().setHTML(`
-      <div class="pp">
-        <div class="pp-t">${a.icon || ''} ${esc(a.reg || a.flight || 'Aéronef')}</div>
-        <k>Type</k>${esc(a.kind || 'aéronef')}${a.type ? ' (' + esc(a.type) + ')' : ''}<br>
-        ${alt}${spd}
-      </div>`);
-    if (layers.avions) mk.addTo(map); else mk.remove();
-  });
-  // Retire les markers d'appareils disparus de la fenêtre.
-  Object.keys(avionMarkers).forEach(hex => {
-    if (!seen[hex]){ avionMarkers[hex].remove(); delete avionMarkers[hex]; }
-  });
-  renderAvionTraces();
+  const ps = map.getSource('avions-pos');    if (ps) ps.setData({type:'FeatureCollection', features:posFeats});
+  const ts = map.getSource('avions-traces'); if (ts) ts.setData({type:'FeatureCollection', features:traceFeats});
 }
 async function loadAircraft(){
   try{
@@ -1680,7 +1930,7 @@ async function loadAircraft(){
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     avionData = Array.isArray(d.aircraft) ? d.aircraft : [];
-    renderAvionMarkers();
+    renderAvions();
   }catch(e){ /* pas de trace inventée */ }
 }
 
@@ -1705,9 +1955,27 @@ function applyLayerVisibility(){
     map.setLayoutProperty('burned-fill','visibility', v);
     map.setLayoutProperty('burned-line','visibility', v);
   }
-  opsMarkers.forEach(m => layers.ops ? m.addTo(map) : m.remove());
-  Object.values(avionMarkers).forEach(m => layers.avions ? m.addTo(map) : m.remove());
-  renderAvionTraces();
+  const setVis = (id, on) => { if (map.getLayer(id)) map.setLayoutProperty(id,'visibility', on ? 'visible' : 'none'); };
+  setVis('ops-icons', layers.ops);
+  setVis('avions-icons', layers.avions);
+  setVis('avions-traces-line', layers.avions);
+  renderAvions();
+  updateAvionLegend();
+}
+
+/* Légende « Moyens aériens » (visible seulement quand la couche est ON).
+   Sur mobile elle vit dans #hud-body comme le reste. */
+function updateAvionLegend(){
+  const card = document.getElementById('hud-avions');
+  if (!card) return;
+  card.classList.toggle('on', !!layers.avions);
+  if (!layers.avions) return;
+  const c = catColors();
+  const rows = [['canadair','Canadair'],['dash','Dash 8'],['helico','Hélicoptère'],
+               ['liaison','Liaison / reco'],['autre',"Autre aéronef d'État"]];
+  card.innerHTML = '<div class="hud-h">Moyens aériens</div>'
+    + rows.map(([k, lb]) => `<div class="av-leg"><span class="av-dot" style="background:${c[k]}"></span>${esc(lb)}</div>`).join('')
+    + '<div class="av-note">traces 3 h · ADS-B adsb.fi</div>';
 }
 function toggleLayer(key){
   layers[key] = !layers[key];
@@ -1764,8 +2032,8 @@ async function loadSituation(){
     situation.zones       = Array.isArray(d.zones) ? d.zones : [];
     renderZonesPanel();
     renderEvacPanel();
-    renderEvacMarkers();
-    renderOpsMarkers();
+    renderEvac();
+    renderOps();
     render();
   }catch(e){
     if (!situation.zones.length) document.getElementById('zones-list').innerHTML =
@@ -2091,7 +2359,7 @@ document.getElementById('panel-toggle').addEventListener('click', () => {
 applyThemeClass();
 syncLayerChips();
 bindInteractions();
-document.addEventListener('visibilitychange', updateWindEngine);   // rAF vent seulement onglet visible
+document.addEventListener('visibilitychange', () => { updateWindEngine(); updateRingEngine(); });   // rAF vent + anneau foyers : onglet visible seulement
 /* (re)construit toutes les couches à chaque style. Anti-course : si deux
    setStyle se sont enchaînés (ex. Relief puis Plan), le style RÉELLEMENT chargé
    peut ne pas être la cible courante. On compare l'id du style chargé (via son

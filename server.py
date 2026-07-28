@@ -527,17 +527,17 @@ _aircraft_lock = threading.Lock()
 
 
 def _classify_aircraft(type_code, reg):
-    """(kind, icon) selon le type ICAO. Canadair/Dash = bombardiers d'eau."""
+    """(kind, icon, category) selon le type ICAO. Canadair/Dash = bombardiers d'eau."""
     t = (type_code or "").upper()
     if t in ("CL2T", "CL41", "C415", "CL30"):
-        return "Canadair (bombardier d'eau)", "🛩️"
+        return "Canadair (bombardier d'eau)", "🛩️", "canadair"
     if t == "DH8D":
-        return "Dash 8 (bombardier d'eau)", "🛩️"
+        return "Dash 8 (bombardier d'eau)", "🛩️", "dash"
     if t in ("B350", "BE20", "TBM9", "PC12", "F406", "C208"):
-        return "avion de liaison / reconnaissance", "✈️"
+        return "avion de liaison / reconnaissance", "✈️", "liaison"
     if t[:2] in ("EC", "AS", "H1", "H2", "SA", "AW") or t in ("B105", "B412"):
-        return "hélicoptère", "🚁"
-    return "aéronef d'État", "✈️"
+        return "hélicoptère", "🚁", "helico"
+    return "aéronef d'État", "✈️", "autre"
 
 
 def build_aircraft():
@@ -560,11 +560,11 @@ def build_aircraft():
         if lat is None or lon is None:
             continue
         hexid = a.get("hex") or reg or flight
-        kind, icon = _classify_aircraft(a.get("t"), reg)
+        kind, icon, category = _classify_aircraft(a.get("t"), reg)
         alt = a.get("alt_baro")
         info = {
             "hex": hexid, "reg": reg or None, "flight": flight or None,
-            "type": a.get("t"), "kind": kind, "icon": icon,
+            "type": a.get("t"), "kind": kind, "icon": icon, "category": category,
             "lat": round(lat, 5), "lon": round(lon, 5),
             "alt_ft": None if alt in (None, "ground") else alt,
             "track": a.get("track"),
@@ -593,12 +593,12 @@ def build_aircraft():
 
 
 def get_aircraft():
-    """Instantané : appareils courants + leur trace GPS (liste de [lat,lon])."""
+    """Instantané : appareils courants + leur trace GPS (liste de [t_epoch_s, lat, lon])."""
     with _aircraft_lock:
         craft = []
         for rec in _aircraft_hist.values():
             info = dict(rec["info"])
-            info["trace"] = [[p[1], p[2]] for p in rec["trace"]]
+            info["trace"] = [[int(p[0]), p[1], p[2]] for p in rec["trace"]]
             craft.append(info)
     return {
         "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
