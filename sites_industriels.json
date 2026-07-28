@@ -1,0 +1,16 @@
+{
+  "_comment": "Sites industriels à chaleur permanente (raffineries, aciéries, torchères, cimenteries…) que NASA FIRMS détecte comme des feux tous les jours. Toute détection tombant dans 'rayon_km' d'un de ces points est écartée AVANT le clustering. Ajouter/retirer des entrées ici suffit — aucune modif de code nécessaire. Coordonnées en degrés décimaux (WGS84).",
+  "sites": [
+    { "nom": "Raffinerie Gonfreville-l'Orcher (ExxonMobil)", "lat": 49.4783, "lon": 0.2483, "rayon_km": 3.0 },
+    { "nom": "Raffinerie Port-Jérôme / Notre-Dame-de-Gravenchon (ExxonMobil)", "lat": 49.4667, "lon": 0.5333, "rayon_km": 3.0 },
+    { "nom": "Raffinerie de Donges (TotalEnergies)", "lat": 47.3000, "lon": -2.0667, "rayon_km": 3.0 },
+    { "nom": "Raffinerie de Feyzin (TotalEnergies)", "lat": 45.6733, "lon": 4.8567, "rayon_km": 2.5 },
+    { "nom": "Raffinerie de Grandpuits (TotalEnergies)", "lat": 48.5867, "lon": 2.9833, "rayon_km": 2.5 },
+    { "nom": "Plateforme de Fos-sur-Mer (raffinage / pétrochimie)", "lat": 43.4333, "lon": 4.9167, "rayon_km": 5.0 },
+    { "nom": "Raffinerie de La Mède (TotalEnergies, Châteauneuf-les-Martigues)", "lat": 43.3950, "lon": 5.1050, "rayon_km": 3.0 },
+    { "nom": "Plateforme de Lavéra / Martigues (pétrochimie)", "lat": 43.3900, "lon": 5.0100, "rayon_km": 3.0 },
+    { "nom": "Aciérie ArcelorMittal Dunkerque", "lat": 51.0300, "lon": 2.2600, "rayon_km": 4.0 },
+    { "nom": "Aciérie ArcelorMittal Fos-sur-Mer", "lat": 43.4050, "lon": 4.9450, "rayon_km": 4.0 },
+    { "nom": "Aciérie ArcelorMittal Florange", "lat": 49.3200, "lon": 6.1300, "rayon_km": 3.0 }
+  ]
+}

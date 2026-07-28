@@ -67,6 +67,41 @@ FEEDS = [
 BBOX = (41.2, -5.6, 51.3, 9.9)  # lat_min, lon_min, lat_max, lon_max
 
 
+def load_industrial_sites():
+    """Sites industriels à chaleur permanente (raffineries, aciéries,
+    torchères…) que FIRMS détecte comme des feux en continu. On écarte toute
+    détection tombant dans leur rayon. Liste éditable dans sites_industriels.json.
+    Renvoie une liste de (lat, lon, rayon_km)."""
+    path = ROOT / "sites_industriels.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    sites = []
+    for s in data.get("sites", []):
+        try:
+            sites.append((float(s["lat"]), float(s["lon"]), float(s.get("rayon_km", 3.0))))
+        except (KeyError, ValueError, TypeError):
+            continue
+    return sites
+
+
+INDUSTRIAL_SITES = load_industrial_sites()
+
+
+def is_industrial(lat, lon):
+    """True si (lat, lon) tombe dans le rayon d'un site industriel connu.
+    Distance approchée en km (équirectangulaire, suffisant à cette échelle)."""
+    for slat, slon, rayon_km in INDUSTRIAL_SITES:
+        dlat = (lat - slat) * 111.0
+        dlon = (lon - slon) * 111.0 * math.cos(math.radians((lat + slat) / 2.0))
+        if dlat * dlat + dlon * dlon <= rayon_km * rayon_km:
+            return True
+    return False
+
+
 def load_france_rings():
     geo = json.loads((ROOT / "metropole.geojson").read_text())
     geom = geo["geometry"]
@@ -132,6 +167,8 @@ def fetch_feed(feed):
             continue
         if not in_france(lon, lat):
             continue
+        if is_industrial(lat, lon):
+            continue  # torchère / raffinerie / aciérie : chaleur permanente, pas un feu
         acq_time = row["acq_time"].zfill(4)
         points.append({
             "lat": lat,
