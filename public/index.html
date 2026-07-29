@@ -985,7 +985,18 @@ function installLayers(){
       layout:{'icon-image':['get','img'], 'icon-anchor':'left', 'icon-offset':[10,0],
               'icon-allow-overlap':true}}, before);
   }
-  // Moyens aériens : silhouette SDF teintée par catégorie, orientée selon le cap.
+  // Moyens aériens : pastille de fond + anneau couleur catégorie (visibilité
+  // façon Flightradar) sous la silhouette SDF teintée, orientée selon le cap.
+  if (!map.getLayer('avions-halo')){
+    map.addLayer({id:'avions-halo', type:'circle', source:'avions-pos',
+      paint:{
+        'circle-radius':15,
+        'circle-color': colors().bg,
+        'circle-opacity':0.88,
+        'circle-stroke-width':2.5,
+        'circle-stroke-color':catColorExpr(),
+      }}, before);
+  }
   if (!map.getLayer('avions-icons')){
     map.addLayer({id:'avions-icons', type:'symbol', source:'avions-pos',
       layout:{
@@ -1039,6 +1050,10 @@ function applyDataColors(){
   }
   if (map.getLayer('avions-traces-line')) map.setPaintProperty('avions-traces-line','line-color', catColorExpr());
   if (map.getLayer('avions-icons')) map.setPaintProperty('avions-icons','icon-color', catColorExpr());
+  if (map.getLayer('avions-halo')){
+    map.setPaintProperty('avions-halo','circle-color', c.bg);
+    map.setPaintProperty('avions-halo','circle-stroke-color', catColorExpr());
+  }
 }
 
 /* ============================================================
@@ -1173,10 +1188,17 @@ function bindInteractions(){
     if (z) openMiscPopup({offset:12, maxWidth:'320px'}, e.lngLat, zonePopupHTML(z));
   });
 
-  // moyens aériens : popup identique (immat, type, altitude, vitesse)
-  map.on('mouseenter','avions-icons', () => { map.getCanvas().style.cursor = 'pointer'; });
-  map.on('mouseleave','avions-icons', () => { map.getCanvas().style.cursor = ''; });
+  // moyens aériens : popup identique (immat, type, altitude, vitesse) —
+  // la pastille de fond est cliquable aussi (cible plus large que la silhouette)
+  ['avions-icons','avions-halo'].forEach(l => {
+    map.on('mouseenter', l, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', l, () => { map.getCanvas().style.cursor = ''; });
+  });
   map.on('click','avions-icons', e => {
+    openMiscPopup({offset:14, maxWidth:'260px'}, e.lngLat, avionPopupHTML(e.features[0].properties));
+  });
+  map.on('click','avions-halo', e => {
+    if (map.queryRenderedFeatures(e.point, {layers:['avions-icons']}).length) return;
     openMiscPopup({offset:14, maxWidth:'260px'}, e.lngLat, avionPopupHTML(e.features[0].properties));
   });
 }
@@ -1985,6 +2007,7 @@ function applyLayerVisibility(){
   const setVis = (id, on) => { if (map.getLayer(id)) map.setLayoutProperty(id,'visibility', on ? 'visible' : 'none'); };
   setVis('ops-icons', layers.ops);
   setVis('avions-icons', layers.avions);
+  setVis('avions-halo', layers.avions);
   setVis('avions-traces-line', layers.avions);
   renderAvions();
   updateAvionLegend();
