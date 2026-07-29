@@ -10,7 +10,17 @@
     { "nom": "Raffinerie de La Mède (TotalEnergies, Châteauneuf-les-Martigues)", "lat": 43.3950, "lon": 5.1050, "rayon_km": 3.0 },
     { "nom": "Plateforme de Lavéra / Martigues (pétrochimie)", "lat": 43.3900, "lon": 5.0100, "rayon_km": 3.0 },
     { "nom": "Aciérie ArcelorMittal Dunkerque", "lat": 51.0300, "lon": 2.2600, "rayon_km": 4.0 },
+    { "nom": "Aciérie ArcelorMittal Dunkerque — hauts-fourneaux est (vérifié Google Maps 2026-07-29)", "lat": 51.0472, "lon": 2.3187, "rayon_km": 2.5 },
     { "nom": "Aciérie ArcelorMittal Fos-sur-Mer", "lat": 43.4050, "lon": 4.9450, "rayon_km": 4.0 },
-    { "nom": "Aciérie ArcelorMittal Florange", "lat": 49.3200, "lon": 6.1300, "rayon_km": 3.0 }
+    { "nom": "Aciérie ArcelorMittal Florange", "lat": 49.3200, "lon": 6.1300, "rayon_km": 3.0 },
+    { "nom": "Aciérie SAM Neuves-Maisons (vérifié OSM man_made=works + détections jour/nuit)", "lat": 48.6115, "lon": 6.1120, "rayon_km": 2.0 },
+    { "nom": "Cimenterie de Héming (Moselle)", "lat": 48.6930, "lon": 6.9660, "rayon_km": 2.0 },
+    { "nom": "Cimenterie Vicat (Isère, vallée de l'Isère près de Voreppe)", "lat": 45.2310, "lon": 5.6660, "rayon_km": 1.5 },
+    { "nom": "Cimenterie Lafarge Saint-Pierre-la-Cour (Mayenne)", "lat": 48.1080, "lon": -1.0370, "rayon_km": 2.0 },
+    { "nom": "Cimenterie EQIOM de Lumbres (Pas-de-Calais)", "lat": 50.6970, "lon": 2.1130, "rayon_km": 2.0 },
+    { "nom": "Cimenterie Ciments Calcia d'Airvault (Deux-Sèvres)", "lat": 46.8080, "lon": -0.1410, "rayon_km": 2.0 },
+    { "nom": "Cimenterie Lafarge de Martres-Tolosane (Haute-Garonne)", "lat": 43.1855, "lon": 0.9890, "rayon_km": 2.0 },
+    { "nom": "Incinérateur / centre de traitement Sictrem (Baugy, Cher) — vérifié satellite Google Maps", "lat": 47.0770, "lon": 2.7490, "rayon_km": 1.2 },
+    { "nom": "Centrale photovoltaïque d'Anneville-Ambourville + site Dumona (reflets panneaux, vérifié Google Maps)", "lat": 49.4572, "lon": 0.9050, "rayon_km": 1.2 }
   ]
 }
