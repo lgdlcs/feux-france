@@ -449,7 +449,10 @@ def get_wind():
 # SOUS-ESTIME le total national réel (stats pompiers), d'où la note côté front.
 # Donnée hebdomadaire : rafraîchie une fois par heure, pas toutes les 10 min.
 # ---------------------------------------------------------------------------
-EFFIS_URL = "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=FRA"
+# Sans paramètre year, l'API renvoie la dernière année COMPLÈTE (52 semaines
+# remplies, ex. 2025) avec des mddate relabellisées sur l'année courante — il
+# faut donc toujours passer year explicitement.
+EFFIS_URL = "https://api2.effis.emergency.copernicus.eu/statistics/v2/effis/weekly?country=FRA&year={year}"
 NATIONAL_TTL = 3600  # secondes
 _national_cache = {"data": None, "ts": 0}
 _national_lock = threading.Lock()
@@ -459,7 +462,8 @@ def build_national():
     """Cumul YTD (ha) et nb d'événements pour la France depuis EFFIS.
     Ne somme que les semaines dont la date est déjà passée (les entrées
     futures sont des placeholders à ignorer)."""
-    req = urllib.request.Request(EFFIS_URL, headers={"User-Agent": "feux-france-local/1.0"})
+    url = EFFIS_URL.format(year=time.strftime("%Y", time.gmtime()))
+    req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     weeks = data.get("banfweekly") if isinstance(data, dict) else None
