@@ -12,6 +12,7 @@ Régénère aussi les périmètres brûlés EFFIS et suit la flotte aérienne d'
 import calendar
 import csv
 import gzip
+import hashlib
 import io
 import os
 import json
@@ -1099,6 +1100,9 @@ COMPRESSIBLE = {
     ".geojson": "application/geo+json",
     ".svg": "image/svg+xml",
 }
+# Binaires figés d'un déploiement à l'autre : cache navigateur long, pas même
+# de revalidation. L'og-image seule pèse ~155 Ko à chaque partage social.
+LONG_CACHE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".ico", ".woff2"}
 _gz_cache = {}  # chemin résolu -> (mtime, bytes gzip)
 _gz_lock = threading.Lock()
 
@@ -1109,18 +1113,47 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         # Jamais de HTML/JS périmé côté navigateur : le fichier évolue souvent.
+        # Les images, elles, ne changent qu'au déploiement : on les laisse en
+        # cache long, sinon chaque visite repaie l'og-image (~155 Ko).
         if not self.path.startswith("/api/"):
-            self.send_header("Cache-Control", "no-cache")
+            ext = os.path.splitext(urllib.parse.urlparse(self.path).path)[1].lower()
+            if ext in LONG_CACHE_EXT:
+                self.send_header("Cache-Control", "public, max-age=604800")
+            else:
+                self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
     def _accepts_gzip(self):
         return "gzip" in (self.headers.get("Accept-Encoding") or "")
 
+    def _not_modified(self, etag):
+        """Renvoie True (et répond 304) si le client a déjà cette version.
+        Un 304 pèse ~200 octets contre plusieurs centaines de Ko pour le corps :
+        c'est le principal levier de réduction de la bande passante sortante."""
+        inm = self.headers.get("If-None-Match") or ""
+        if etag not in [t.strip().lstrip("W/") for t in inm.split(",")]:
+            return False
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        self.send_header("Vary", "Accept-Encoding")
+        self.end_headers()
+        return True
+
     def _send_json(self, obj, status=200):
         body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
+        etag = None
+        if status == 200:
+            etag = '"%s"' % hashlib.md5(body).hexdigest()
+            if self._not_modified(etag):
+                return
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
+        # no-cache (et non no-store) : le navigateur garde la réponse et la
+        # revalide par If-None-Match, ce qui rend les 304 possibles.
+        self.send_header("Cache-Control", "no-cache")
+        if etag:
+            self.send_header("ETag", etag)
+        self.send_header("Vary", "Accept-Encoding")
         if status == 200 and len(body) > 860 and self._accepts_gzip():
             body = gzip.compress(body, 6)
             self.send_header("Content-Encoding", "gzip")
@@ -1144,7 +1177,8 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         if not str(fp).startswith(str(PUBLIC_DIR) + os.sep) or not fp.is_file():
             return False
-        mtime = fp.stat().st_mtime
+        st = fp.stat()
+        mtime = st.st_mtime
         key = str(fp)
         with _gz_lock:
             cached = _gz_cache.get(key)
@@ -1153,9 +1187,17 @@ class Handler(SimpleHTTPRequestHandler):
             with _gz_lock:
                 _gz_cache[key] = cached
         body = cached[1]
+        # ETag sur (mtime, taille, taille gzip) : stable tant que le fichier ne
+        # bouge pas, donc un visiteur qui revient ne retélécharge pas
+        # burned.geojson (~450 Ko gzip) tant qu'EFFIS n'a pas republié.
+        etag = '"%x-%x-%x"' % (int(mtime), st.st_size, len(body))
+        if self._not_modified(etag):
+            return True
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Encoding", "gzip")
+        self.send_header("ETag", etag)
+        self.send_header("Last-Modified", self.date_time_string(int(mtime)))
         self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
