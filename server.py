@@ -395,6 +395,14 @@ def build_payload():
     }
 
 
+# Les deux gros builds — FIRMS 7 jours et périmètres EFFIS — tournent dans des
+# threads indépendants avec des périodes différentes (minutes contre 6 h) : ils
+# finissent forcément par tomber en même temps. Chacun pèse quelques centaines
+# de Mo au pic, pour 512 Mo sur l'hébergement, et un OOM tue tout le service.
+# Ce verrou les met simplement bout à bout : personne n'attend, ces builds
+# n'étant jamais dans le chemin d'une requête.
+_heavy_lock = threading.Lock()
+
 
 def _store_fires(data):
     with _lock:
@@ -597,6 +605,349 @@ def get_national():
 
 
 # ---------------------------------------------------------------------------
+# Zones brûlées — périmètres EFFIS / Copernicus, régénérés en tâche de fond.
+#
+# Le WFS EFFIS est ouvert, sans clé, mais deux pièges :
+#   1. il renvoie les coordonnées en [lat, lon] alors que la spec GeoJSON veut
+#      [lon, lat] — sans permutation, tout atterrit en Somalie ;
+#   2. il peut mettre de 5 à 250 s à répondre : jamais depuis le front, toujours
+#      en tâche de fond.
+#
+# Deux couches complémentaires :
+#   - modis.ba.poly.season : polygones DATÉS de la saison en cours, avec
+#     attributs (FIREDATE, LASTUPDATE, AREA_HA, COMMUNE, PROVINCE, COUNTRY) ;
+#   - effis.nrt.ba.poly    : contour plus frais, GÉOMÉTRIE SEULE (aucun
+#     attribut, donc ni date ni pays — filtrage par le polygone métropole).
+#
+# Le résultat écrit public/burned.geojson, que le front charge en lazy. Le cache
+# gzip du serveur étant indexé sur le mtime, la réécriture suffit à le publier.
+# ---------------------------------------------------------------------------
+EFFIS_WFS = "https://maps.effis.emergency.copernicus.eu/effis"
+EFFIS_BBOX = (-5.5, 41.0, 10.0, 51.5)   # west, south, east, north
+EFFIS_DATED_LAYER = "modis.ba.poly.season"
+EFFIS_NRT_LAYER = "effis.nrt.ba.poly"
+EFFIS_VIEWER = "https://forest-fire.emergency.copernicus.eu/effis-current-situation"
+EFFIS_TIMEOUT = 300         # le WFS peut réellement mettre plusieurs minutes
+BURNED_TTL = 6 * 3600       # EFFIS ne republie que 1 à 2 fois par jour
+BURNED_PATH = ROOT / "public" / "burned.geojson"
+BURNED_DP = 5               # ~1 m : largement assez pour un périmètre ~250 m
+BURNED_SIMPLIFY = 0.0004    # ~45 m : très en dessous de la résolution EFFIS (~250 m)
+BURNED_MIN_FEATURES = 50    # en dessous, on suspecte une réponse tronquée
+BURNED_KEEP_RATIO = 0.5     # un build deux fois plus pauvre n'écrase pas l'acquis
+BURNED_MARKER = "effis-wfs"  # trace notre propre génération dans le fichier
+
+
+def effis_wfs(typename, timeout=EFFIS_TIMEOUT):
+    """Interroge le WFS EFFIS sur l'emprise métropole et renvoie les features
+    brutes (coordonnées encore en [lat, lon])."""
+    w, s, e, n = EFFIS_BBOX
+    url = (f"{EFFIS_WFS}?service=WFS&version=1.0.0&request=GetFeature"
+           f"&typename=ms:{typename}&outputformat=geojson"
+           f"&bbox={w},{s},{e},{n}")
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "feux-france/1.0 (carte-incendies.fr)",
+        "Accept": "application/json",
+    })
+    # Les octets bruts sont libérés dès le décodage, et le texte dès le parsing :
+    # la réponse datée fait plusieurs Mo et garder les trois représentations en
+    # même temps coûte cher pour rien.
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        text = resp.read().decode("utf-8", "replace")
+    data = json.loads(text)
+    del text
+    feats = data.get("features")
+    return feats if isinstance(feats, list) else []
+
+
+def swap_round(node):
+    """Permute [lat, lon] -> [lon, lat] et arrondit, récursivement dans les
+    tableaux de coordonnées GeoJSON (profondeur variable selon le type)."""
+    if not isinstance(node, list) or not node:
+        return node
+    if isinstance(node[0], (int, float)):
+        # Feuille : une position [lat, lon] à permuter.
+        if len(node) < 2:
+            return node
+        return [round(float(node[1]), BURNED_DP), round(float(node[0]), BURNED_DP)]
+    return [swap_round(child) for child in node]
+
+
+def _seg_dist2(p, a, b):
+    """Carré de la distance du point p au segment [a, b], en degrés²."""
+    px, py = p[0], p[1]
+    ax, ay = a[0], a[1]
+    bx, by = b[0], b[1]
+    dx, dy = bx - ax, by - ay
+    if dx == 0 and dy == 0:
+        return (px - ax) ** 2 + (py - ay) ** 2
+    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
+    t = 0.0 if t < 0 else (1.0 if t > 1 else t)
+    return (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2
+
+
+def simplify_ring(ring, tol):
+    """Douglas-Peucker itératif (pas de récursion : certains périmètres ont des
+    milliers de sommets). Les contours EFFIS sont tracés sur une grille de
+    pixels : ils montent en escalier et la tolérance, choisie très en dessous de
+    la résolution source, ne fait que retirer ces marches. Un anneau reste fermé
+    et garde au moins 4 positions, sinon il est renvoyé tel quel."""
+    if len(ring) < 5:
+        return ring
+    closed = ring[0] == ring[-1]
+    pts = ring[:-1] if closed else ring
+    if len(pts) < 4:
+        return ring
+    tol2 = tol * tol
+    keep = [False] * len(pts)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(pts) - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        worst, worst_d = -1, -1.0
+        for k in range(i + 1, j):
+            d = _seg_dist2(pts[k], pts[i], pts[j])
+            if d > worst_d:
+                worst, worst_d = k, d
+        if worst_d > tol2:
+            keep[worst] = True
+            stack.append((i, worst))
+            stack.append((worst, j))
+    out = [p for p, k in zip(pts, keep) if k]
+    if len(out) < (4 if closed else 2):
+        return ring
+    return out + [out[0]] if closed else out
+
+
+def simplify_geometry(coords, depth):
+    """Applique simplify_ring à chaque anneau. `depth` est le nombre de niveaux
+    de listes restant à traverser avant d'atteindre un anneau (2 pour un
+    Polygon : [anneaux][positions], 3 pour un MultiPolygon)."""
+    if depth <= 1:
+        return simplify_ring(coords, BURNED_SIMPLIFY)
+    return [simplify_geometry(child, depth - 1) for child in coords]
+
+
+def clean_geometry(geometry):
+    """Permute les axes puis simplifie, selon le type de géométrie. Les types
+    ponctuels ou linéaires ne sont pas simplifiés (aucun ne sort du WFS
+    aujourd'hui, mais on ne les abîme pas s'ils apparaissent)."""
+    gtype = geometry.get("type")
+    coords = swap_round(geometry.get("coordinates"))
+    if gtype == "Polygon":
+        coords = simplify_geometry(coords, 2)
+    elif gtype == "MultiPolygon":
+        coords = simplify_geometry(coords, 3)
+    return {"type": gtype, "coordinates": coords}
+
+
+def geometry_positions(geometry):
+    """Toutes les positions [lon, lat] d'une géométrie, à plat."""
+    out = []
+
+    def walk(node):
+        if isinstance(node, list) and node:
+            if isinstance(node[0], (int, float)):
+                if len(node) >= 2:
+                    out.append(node)
+            else:
+                for child in node:
+                    walk(child)
+
+    walk((geometry or {}).get("coordinates"))
+    return out
+
+
+def geometry_in_france(geometry):
+    """True si la géométrie touche la métropole. On teste le barycentre des
+    sommets puis, s'il tombe à l'eau (polygone concave, île, trait de côte),
+    un échantillon de sommets — un périmètre frontalier reste ainsi retenu."""
+    pos = geometry_positions(geometry)
+    if not pos:
+        return False
+    lon_c = sum(p[0] for p in pos) / len(pos)
+    lat_c = sum(p[1] for p in pos) / len(pos)
+    if in_france(lon_c, lat_c):
+        return True
+    stride = max(1, len(pos) // 12)
+    return any(in_france(p[0], p[1]) for p in pos[::stride])
+
+
+def _effis_num(raw):
+    try:
+        return round(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _effis_day(raw):
+    """'2026-02-24 12:01:00' -> '2026-02-24'. None si illisible."""
+    if not isinstance(raw, str) or len(raw) < 10:
+        return None
+    day = raw[:10]
+    return day if day[4] == "-" and day[7] == "-" else None
+
+
+def _drain(feats):
+    """Parcourt la liste en la vidant : chaque feature brute est libérée dès
+    qu'elle est traitée, au lieu de garder tout le brut ET tout le simplifié en
+    mémoire simultanément. L'ordre est inversé, sans conséquence : les
+    périmètres sont tous tracés dans la même couleur, il n'y a pas d'ordre
+    d'empilement à préserver."""
+    while feats:
+        yield feats.pop()
+
+
+def build_burned():
+    """Construit le GeoJSON des zones brûlées : périmètres datés de la saison
+    en cours (filtrés sur COUNTRY=FR) + contours NRT plus frais (filtrés sur le
+    polygone métropole, faute d'attributs). Une couche indisponible ne fait pas
+    échouer le build tant que l'autre répond."""
+    features, sources = [], []
+
+    try:
+        dated = effis_wfs(EFFIS_DATED_LAYER)
+    except Exception:
+        dated = None
+    if dated:
+        sources.append(EFFIS_DATED_LAYER)
+        for f in _drain(dated):
+            props = f.get("properties") or {}
+            if (props.get("COUNTRY") or "").strip().upper() != "FR":
+                continue
+            geom = f.get("geometry") or {}
+            if not geom.get("coordinates"):
+                continue
+            geom = clean_geometry(geom)
+            area = _effis_num(props.get("AREA_HA"))
+            commune = (props.get("COMMUNE") or "").strip() or None
+            province = (props.get("PROVINCE") or "").strip() or None
+            label = " ".join(p for p in [
+                commune,
+                f"({province})" if province else None,
+                f"— {area} ha" if area else None,
+            ] if p) or None
+            features.append({
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {
+                    "label": label,
+                    "date": _effis_day(props.get("FIREDATE")),
+                    "updated": _effis_day(props.get("LASTUPDATE")),
+                    "area_ha": area,
+                    "commune": commune,
+                    "province": province,
+                    "kind": "dated",
+                    "source_url": EFFIS_VIEWER,
+                    "source_label": "EFFIS / Copernicus",
+                },
+            })
+
+    dated = None
+
+    try:
+        nrt = effis_wfs(EFFIS_NRT_LAYER)
+    except Exception:
+        nrt = None
+    if nrt:
+        sources.append(EFFIS_NRT_LAYER)
+        for f in _drain(nrt):
+            geom = f.get("geometry") or {}
+            if not geom.get("coordinates"):
+                continue
+            geom = clean_geometry(geom)
+            if not geometry_in_france(geom):
+                continue
+            # Aucun attribut n'est exposé sur cette couche : pas de date, pas de
+            # surface. On ne comble rien — les champs restent absents.
+            features.append({
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {
+                    "label": None,
+                    "date": None,
+                    "kind": "nrt",
+                    "source_url": EFFIS_VIEWER,
+                    "source_label": "EFFIS / Copernicus (NRT)",
+                },
+            })
+
+    nrt = None
+
+    if len(features) < BURNED_MIN_FEATURES:
+        raise ValueError(f"EFFIS : seulement {len(features)} périmètres, build écarté")
+    return {
+        "type": "FeatureCollection",
+        "generator": BURNED_MARKER,
+        "generated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sources": sources,
+        "features": features,
+    }
+
+
+def _previous_burned_count():
+    """(count, was_ours) du fichier déjà en place. Le ratio de garde ne
+    s'applique qu'à un fichier que nous avons nous-mêmes généré : le tout
+    premier remplacement d'un jeu d'une autre provenance doit passer."""
+    try:
+        prev = json.loads(BURNED_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return 0, False
+    feats = prev.get("features")
+    return (len(feats) if isinstance(feats, list) else 0,
+            prev.get("generator") == BURNED_MARKER)
+
+
+def write_burned(fc):
+    """Écrit public/burned.geojson de façon atomique. Un build nettement plus
+    pauvre que le précédent n'écrase pas l'acquis (leçon déjà apprise sur la
+    couche « sensibles ») : on garde l'ancien et on retentera au cycle suivant."""
+    prev_n, was_ours = _previous_burned_count()
+    n = len(fc["features"])
+    if was_ours and prev_n and n < prev_n * BURNED_KEEP_RATIO:
+        raise ValueError(f"EFFIS : {n} périmètres contre {prev_n} en place, build écarté")
+    tmp = BURNED_PATH.with_suffix(".geojson.tmp")
+    tmp.write_text(json.dumps(fc, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    os.replace(tmp, BURNED_PATH)
+    return n
+
+
+def _burned_age():
+    """Âge du fichier en place, en secondes. Infini s'il n'existe pas ou s'il
+    vient d'ailleurs que de nous (fichier importé à la main)."""
+    try:
+        if not _previous_burned_count()[1]:
+            return float("inf")
+        return time.time() - BURNED_PATH.stat().st_mtime
+    except Exception:
+        return float("inf")
+
+
+def burned_loop():
+    """Régénère les périmètres EFFIS toutes les BURNED_TTL secondes.
+
+    Le premier passage est sauté si le fichier livré avec le dépôt est encore
+    dans sa fenêtre de fraîcheur. La simplification des périmètres est un gros
+    calcul Python (plus de 300 000 sommets) : la lancer au démarrage, c'est-à-dire
+    au moment précis où l'hébergeur vérifie la santé du service et où les caches
+    sont encore vides, revient à saturer le seul cœur disponible quand on en a
+    le plus besoin. Un déploiement embarque déjà un fichier à jour ; il n'y a
+    rien à recalculer avant l'échéance normale."""
+    while True:
+        age = _burned_age()
+        if age < BURNED_TTL:
+            time.sleep(BURNED_TTL - age)
+            continue
+        try:
+            with _heavy_lock:
+                write_burned(build_burned())
+        except Exception:
+            pass
+        time.sleep(BURNED_TTL)
+
+
+# ---------------------------------------------------------------------------
 # Suivi aérien — flotte Sécurité Civile (Canadair, Dash, hélicos Dragon…).
 # Source ADS-B communautaire adsb.fi (sans quota). On identifie les aéronefs
 # d'État français par immatriculation F-Z*. Traces GPS accumulées en mémoire
@@ -716,7 +1067,8 @@ def refresh_loop():
     last_national = 0.0
     while True:
         try:
-            _store_fires(build_payload())
+            with _heavy_lock:
+                _store_fires(build_payload())
         except Exception:
             pass
         try:
@@ -863,5 +1215,6 @@ if __name__ == "__main__":
     # après un déploiement n'attend plus la collecte FIRMS.
     threading.Thread(target=refresh_loop, daemon=True).start()
     threading.Thread(target=aircraft_loop, daemon=True).start()
+    threading.Thread(target=burned_loop, daemon=True).start()
     print(f"Carte des feux : http://localhost:{PORT}")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

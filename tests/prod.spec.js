@@ -37,21 +37,6 @@ test.describe('APIs prod', () => {
     }
   });
 
-  test('/api/fires répond vite, même à plusieurs en même temps', async ({ request }) => {
-    // La panne du 30/07 : in_france() testait chaque point contre 31 292
-    // sommets sans index, et get_data() laissait chaque visiteur lancer sa
-    // propre collecte complète. Sur le petit CPU de l'hébergement, aucune ne
-    // se terminait et /api/fires ne répondait plus jamais. Ce test vérifie le
-    // contrat visible : la réponse arrive, et la concurrence ne l'écroule pas.
-    const t0 = Date.now();
-    const rs = await Promise.all([1, 2, 3, 4, 5].map(() => request.get(`${BASE}/api/fires`)));
-    const dt = (Date.now() - t0) / 1000;
-    for (const r of rs) expect(r.ok()).toBeTruthy();
-    expect(dt).toBeLessThan(25);   // large : c'est l'écroulement qu'on traque, pas la milliseconde
-    const d = await rs[0].json();
-    expect(d.count).toBeGreaterThan(0);
-  });
-
   test('/api/fires couvre bien 7 jours', async ({ request }) => {
     const r = await request.get(`${BASE}/api/fires`);
     const d = await r.json();
@@ -68,6 +53,53 @@ test.describe('APIs prod', () => {
       expect(typeof f.n_24h).toBe('number');
       expect(f.n_24h).toBeLessThanOrEqual(f.n);
     }
+  });
+
+  test('/api/fires répond vite, même à plusieurs en même temps', async ({ request }) => {
+    // La panne du 30/07 : in_france() testait chaque point contre 31 292
+    // sommets sans index, et get_data() laissait chaque visiteur lancer sa
+    // propre collecte complète. Sur le petit CPU de l'hébergement, aucune ne
+    // se terminait et /api/fires ne répondait plus jamais. Ce test vérifie le
+    // contrat visible : la réponse arrive, et la concurrence ne l'écroule pas.
+    const t0 = Date.now();
+    const rs = await Promise.all([1, 2, 3, 4, 5].map(() => request.get(`${BASE}/api/fires`)));
+    const dt = (Date.now() - t0) / 1000;
+    for (const r of rs) expect(r.ok()).toBeTruthy();
+    expect(dt).toBeLessThan(25);   // large : c'est l'écroulement qu'on traque, pas la milliseconde
+    const d = await rs[0].json();
+    expect(d.count).toBeGreaterThan(0);
+  });
+
+  test('les périmètres EFFIS sont régénérés, pas figés', async ({ request }) => {
+    const r = await request.get(`${BASE}/burned.geojson`);
+    expect(r.ok()).toBeTruthy();
+    const d = await r.json();
+    // Marqueur de notre propre générateur : un fichier importé à la main ne
+    // l'a pas, ce qui signalerait que la régénération ne tourne plus.
+    expect(d.generator).toBe('effis-wfs');
+    expect(d.features.length).toBeGreaterThan(200);
+    // Moins de 7 jours : EFFIS republie 1 à 2 fois par jour, le serveur toutes
+    // les 6 h. Au-delà, la tâche de fond est tombée.
+    const ageDays = (Date.now() - Date.parse(d.generated_at_utc)) / 864e5;
+    expect(ageDays).toBeLessThan(7);
+    // Les deux couches sont présentes et les polygones datés sont renseignés.
+    const kinds = new Set(d.features.map(f => f.properties.kind));
+    expect(kinds.has('dated')).toBeTruthy();
+    const dated = d.features.filter(f => f.properties.kind === 'dated');
+    expect(dated.some(f => f.properties.area_ha > 0 && f.properties.date)).toBeTruthy();
+    // Axes non inversés : tout doit tomber dans l'emprise métropole. Le piège
+    // du WFS EFFIS ([lat, lon] au lieu de [lon, lat]) enverrait ça en Somalie.
+    const lons = [], lats = [];
+    const walk = x => {
+      if (!Array.isArray(x) || !x.length) return;
+      if (typeof x[0] === 'number') { lons.push(x[0]); lats.push(x[1]); }
+      else x.forEach(walk);
+    };
+    d.features.forEach(f => walk(f.geometry.coordinates));
+    expect(Math.min(...lons)).toBeGreaterThan(-6);
+    expect(Math.max(...lons)).toBeLessThan(10);
+    expect(Math.min(...lats)).toBeGreaterThan(41);
+    expect(Math.max(...lats)).toBeLessThan(52);
   });
 });
 

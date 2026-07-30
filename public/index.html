@@ -511,13 +511,13 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
         <span class="tag prev">prévision</span> déduit du vent prévu Open-Meteo.
       </div>
       <div class="notice">
-        <b>Lire ces données correctement :</b> chaque point est une <b>anomalie thermique</b> détectée par satellite (pixel de 375 m à 1 km), publiée sous ~3 h après le passage. Ce n'est ni un périmètre officiel de feu, ni une garantie qu'un incendie est toujours actif. Certaines sources chaudes (industrie, torchères, soleil sur toits) peuvent créer de rares faux positifs. <b>Les moyens engagés et les évacuations proviennent des annonces des préfectures et de la presse, saisis manuellement ; la météo et les vents proviennent d'Open-Meteo.</b> Les <b>panaches de propagation horaires</b>, les <b>communes « sous le vent »</b>, l'<b>indice de conditions</b> et les <b>prévisions 12 h</b> sont des estimations simplifiées déduites du vent prévu heure par heure (Open-Meteo), <b>pas une modélisation officielle de propagation</b> : seules les consignes préfectorales font foi. Les <b>zones brûlées</b> sont la délinéation officielle Copernicus EMS (périmètres réels des feux), tandis que les <b>empreintes de foyers</b> restent des estimations satellite. En cas d'urgence : <b>appelez le 18 ou le 112</b>.
+        <b>Lire ces données correctement :</b> chaque point est une <b>anomalie thermique</b> détectée par satellite (pixel de 375 m à 1 km), publiée sous ~3 h après le passage. Ce n'est ni un périmètre officiel de feu, ni une garantie qu'un incendie est toujours actif. Certaines sources chaudes (industrie, torchères, soleil sur toits) peuvent créer de rares faux positifs. <b>Les moyens engagés et les évacuations proviennent des annonces des préfectures et de la presse, saisis manuellement ; la météo et les vents proviennent d'Open-Meteo.</b> Les <b>panaches de propagation horaires</b>, les <b>communes « sous le vent »</b>, l'<b>indice de conditions</b> et les <b>prévisions 12 h</b> sont des estimations simplifiées déduites du vent prévu heure par heure (Open-Meteo), <b>pas une modélisation officielle de propagation</b> : seules les consignes préfectorales font foi. Les <b>zones brûlées</b> sont les délinéations officielles EFFIS / Copernicus, régénérées plusieurs fois par jour : périmètres <b>datés</b> (feux ≳ 30 ha, avec quelques jours de latence de cartographie) et contours <b>NRT</b> plus frais mais sans date ni surface publiée, dessinés plus discrètement. Les <b>empreintes de foyers</b>, elles, restent des estimations satellite. En cas d'urgence : <b>appelez le 18 ou le 112</b>.
       </div>
       <div class="srcs">
         Sources : <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA FIRMS</a> (VIIRS + MODIS) ·
         <a href="https://meteofrance.com/meteo-des-forets" target="_blank" rel="noopener">Météo des forêts</a> ·
         <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
-        <a href="https://mapping.emergency.copernicus.eu/" target="_blank" rel="noopener">Copernicus EMS</a> (zones brûlées, CC-BY) ·
+        <a href="https://forest-fire.emergency.copernicus.eu/effis-current-situation" target="_blank" rel="noopener">EFFIS / Copernicus</a> (zones brûlées, CC-BY) ·
         cartographie <a href="https://www.mapbox.com/" target="_blank" rel="noopener">Mapbox</a> / <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap</a><br>
         Actualisation automatique toutes les 10 min (feux, météo et vents).
       </div>
@@ -605,7 +605,7 @@ if (theme !== 'light' && theme !== 'dark') {
 let currentBase = localStorage.getItem('ff-base') || 'plan';
 if (!STYLES[currentBase]) currentBase = 'plan';
 
-const ATTRIB = 'Feux : NASA FIRMS · Zones brûlées : Copernicus EMS (CC-BY)';
+const ATTRIB = 'Feux : NASA FIRMS · Zones brûlées : EFFIS / Copernicus (CC-BY)';
 const map = new mapboxgl.Map({
   container:'map',
   style: STYLES[currentBase][theme],
@@ -926,9 +926,10 @@ function installLayers(){
   // --- couches, dans l'ordre : burned < hulls < fires < cones < (labels) < wind ---
   if (map.getSource('burned') && !map.getLayer('burned-fill')){
     map.addLayer({id:'burned-fill', type:'fill', source:'burned',
-      paint:{'fill-color':colors().burn, 'fill-opacity':0.30}}, before);
+      paint:{'fill-color':colors().burn, 'fill-opacity':['case',['==',['get','kind'],'nrt'],0.16,0.30]}}, before);
     map.addLayer({id:'burned-line', type:'line', source:'burned',
-      paint:{'line-color':colors().burn, 'line-width':1, 'line-opacity':0.7}}, before);
+      paint:{'line-color':colors().burn, 'line-width':1,
+        'line-opacity':['case',['==',['get','kind'],'nrt'],0.4,0.7]}}, before);
   }
   if (!map.getLayer('hulls-fill')){
     map.addLayer({id:'hulls-fill', type:'fill', source:'hulls',
@@ -1149,9 +1150,13 @@ function bindInteractions(){
         <div class="pp">
           <div class="pp-t">🔥 Zone brûlée<span class="tag off">officiel</span></div>
           ${p.label ? esc(p.label) + '<br>' : ''}
-          ${p.date ? '<k>Date</k>' + esc(p.date) + '<br>' : ''}
-          ${p.source_url ? '<a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Source Copernicus EMS →</a><br>' : ''}
-          <span style="color:var(--faint);font-size:11px">Délinéation Copernicus EMS${p.date ? ' du ' + esc(p.date) : ''} — périmètre officiel.</span>
+          ${p.area_ha ? '<k>Surface cartographiée</k>' + fmtInt.format(p.area_ha) + ' ha<br>' : ''}
+          ${p.date ? '<k>Date du feu</k>' + esc(p.date) + '<br>' : ''}
+          ${p.updated ? '<k>Mise à jour</k>' + esc(p.updated) + '<br>' : ''}
+          ${p.source_url ? '<a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Source ' + esc(p.source_label || 'Copernicus') + ' \u2192</a><br>' : ''}
+          <span style="color:var(--faint);font-size:11px">${p.kind === 'nrt'
+            ? 'Contour NRT : plus frais que la version datée, mais EFFIS n\'expose ni date ni surface sur cette couche.'
+            : 'Délinéation officielle' + (p.date ? ' du feu du ' + esc(p.date) : '') + '. EFFIS ne cartographie que les feux \u2273 30 ha, avec quelques jours de latence.'}</span>
         </div>`)
       .addTo(map);
   });
@@ -2405,9 +2410,10 @@ async function loadBurnedIfNeeded(){
       const before = firstSymbolId();
       map.addSource('burned', {type:'geojson', data:burnedData});
       map.addLayer({id:'burned-fill', type:'fill', source:'burned',
-        paint:{'fill-color':colors().burn, 'fill-opacity':0.30}}, map.getLayer('hulls-fill') ? 'hulls-fill' : before);
+        paint:{'fill-color':colors().burn, 'fill-opacity':['case',['==',['get','kind'],'nrt'],0.16,0.30]}}, map.getLayer('hulls-fill') ? 'hulls-fill' : before);
       map.addLayer({id:'burned-line', type:'line', source:'burned',
-        paint:{'line-color':colors().burn, 'line-width':1, 'line-opacity':0.7}}, map.getLayer('hulls-fill') ? 'hulls-fill' : before);
+        paint:{'line-color':colors().burn, 'line-width':1,
+        'line-opacity':['case',['==',['get','kind'],'nrt'],0.4,0.7]}}, map.getLayer('hulls-fill') ? 'hulls-fill' : before);
     }
     applyLayerVisibility();
   }catch(e){ /* fichier indisponible : on n'affiche rien plutôt qu'inventer */ }
