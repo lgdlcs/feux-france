@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Serveur local pour la carte des incendies en France.
 
-Récupère les détections thermiques satellites NASA FIRMS (flux publics 24h,
+Récupère les détections thermiques satellites NASA FIRMS (flux publics 7 jours,
 mise à jour continue, sans clé API), filtre les points situés sur le
 territoire métropolitain (polygone précis, pas un simple rectangle) et les
 sert en JSON au frontend. Cache de 10 minutes pour ne pas surcharger FIRMS.
+
+Régénère aussi les périmètres brûlés EFFIS et suit la flotte aérienne d'État.
 """
 
+import calendar
 import csv
 import gzip
 import io
@@ -40,26 +43,35 @@ FOYER_GEOCODE_MIN_N = 10  # géocode aussi les gros foyers même inactifs
 _geo_cache = {}
 _geo_lock = threading.Lock()
 
+# Fenêtre d'historique. Les flux CSV publics FIRMS n'existent qu'en 24h / 48h
+# / 7d : c'est 7d le maximum sans clé API. Environ 11 000 détections sur la
+# métropole en pleine saison, soit ~2 Mo de JSON mais seulement ~140 Ko gzippés
+# (le handler compresse) — et la frise devient lisible sur toute la durée d'un
+# feu, au lieu de n'en montrer que le dernier jour.
+FIRMS_WINDOW = "7d"
+WINDOW_HOURS = 168
+FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/data/active_fire"
+
 FEEDS = [
     {
         "id": "viirs_snpp",
         "label": "VIIRS Suomi-NPP (375 m)",
-        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Europe_24h.csv",
+        "url": f"{FIRMS_BASE}/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Europe_{FIRMS_WINDOW}.csv",
     },
     {
         "id": "viirs_noaa20",
         "label": "VIIRS NOAA-20 (375 m)",
-        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_Europe_24h.csv",
+        "url": f"{FIRMS_BASE}/noaa-20-viirs-c2/csv/J1_VIIRS_C2_Europe_{FIRMS_WINDOW}.csv",
     },
     {
         "id": "viirs_noaa21",
         "label": "VIIRS NOAA-21 (375 m)",
-        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_Europe_24h.csv",
+        "url": f"{FIRMS_BASE}/noaa-21-viirs-c2/csv/J2_VIIRS_C2_Europe_{FIRMS_WINDOW}.csv",
     },
     {
         "id": "modis",
         "label": "MODIS Aqua/Terra (1 km)",
-        "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_Europe_24h.csv",
+        "url": f"{FIRMS_BASE}/modis-c6.1/csv/MODIS_C6_1_Europe_{FIRMS_WINDOW}.csv",
     },
 ]
 
@@ -200,7 +212,8 @@ def normalize_confidence(raw):
 
 def fetch_feed(feed):
     req = urllib.request.Request(feed["url"], headers={"User-Agent": "feux-france-local/1.0"})
-    with urllib.request.urlopen(req, timeout=45) as resp:
+    # Les flux 7 jours pèsent plusieurs Mo : marge plus large qu'en 24 h.
+    with urllib.request.urlopen(req, timeout=120) as resp:
         text = resp.read().decode("utf-8")
     points = []
     for row in csv.DictReader(io.StringIO(text)):
@@ -230,9 +243,15 @@ def fetch_feed(feed):
 
 
 def _parse_utc(s):
-    """'2026-07-26T14:30:00Z' -> epoch (float). Renvoie 0 si illisible."""
+    """'2026-07-26T14:30:00Z' -> epoch (float). Renvoie 0 si illisible.
+
+    timegm interprète le struct_time comme de l'UTC, ce qu'il est. La variante
+    mktime() - time.timezone se trompait d'une heure pendant tout l'été :
+    time.timezone est le décalage HORS heure d'été (altzone s'applique alors),
+    et les foyers quittaient donc la liste des actifs une heure trop tôt.
+    """
     try:
-        return time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+        return float(calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")))
     except (ValueError, TypeError):
         return 0.0
 
@@ -314,11 +333,16 @@ def cluster_foyers(points):
                  int(math.floor(p["lon"] / FOYER_FINE_GRID))) for p in comp_points}
         est_area_ha = round(len(fine) * FOYER_CELL_HA)
         active = (now - _parse_utc(last_utc)) < FOYER_ACTIVE_HOURS * 3600
+        # `n` couvre toute la fenêtre (7 j) : c'est le cumul du feu. `n_24h`
+        # isole le dernier jour, pour distinguer un foyer qui court encore d'un
+        # grand feu déjà éteint mais toujours dans la fenêtre.
+        n_24h = sum(1 for p in comp_points if now - _parse_utc(p["acq_utc"]) < 86400)
         foyers.append({
             "id": fid,
             "lat": round(lat_c, 5),
             "lon": round(lon_c, 5),
             "n": n,
+            "n_24h": n_24h,
             "first_utc": first_utc,
             "last_utc": last_utc,
             "max_frp": round(max_frp, 2),
@@ -363,12 +387,13 @@ def build_payload():
     foyers = cluster_foyers(all_points)
     return {
         "fetched_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "window_hours": 24,
+        "window_hours": WINDOW_HOURS,
         "feeds": feeds_status,
         "count": len(all_points),
         "points": all_points,
         "foyers": foyers,
     }
+
 
 
 def _store_fires(data):

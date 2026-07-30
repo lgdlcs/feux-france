@@ -51,6 +51,24 @@ test.describe('APIs prod', () => {
     const d = await rs[0].json();
     expect(d.count).toBeGreaterThan(0);
   });
+
+  test('/api/fires couvre bien 7 jours', async ({ request }) => {
+    const r = await request.get(`${BASE}/api/fires`);
+    const d = await r.json();
+    expect(d.window_hours).toBe(168);
+    // La plus ancienne détection doit dépasser les 24 h : sinon le flux servi
+    // est resté en 24 h et la frise hebdomadaire n'a rien à rejouer.
+    const oldest = Math.min(...d.points.map(p => Date.parse(p.acq_utc)));
+    const ageH = (Date.now() - oldest) / 3.6e6;
+    expect(ageH).toBeGreaterThan(24);
+    expect(ageH).toBeLessThan(200);   // 168 h + la latence de publication FIRMS
+    // Chaque foyer porte le cumul de la fenêtre ET le compte des 24 h, le
+    // second ne pouvant pas dépasser le premier.
+    for (const f of d.foyers.slice(0, 5)) {
+      expect(typeof f.n_24h).toBe('number');
+      expect(f.n_24h).toBeLessThanOrEqual(f.n);
+    }
+  });
 });
 
 test.describe('Front prod', () => {
@@ -60,13 +78,19 @@ test.describe('Front prod', () => {
     expect(html).toContain('vapour_pressure_deficit');
   });
 
-  test('la carte affiche des markers de foyers', async ({ page }) => {
+  test('la carte rend les détections en WebGL', async ({ page }) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
-    // Les foyers sont des markers Mapbox HTML ; on attend au moins un canvas Mapbox.
     await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
-    await page.waitForTimeout(3000); // laisse charger /api/fires + markers
-    const markers = await page.locator('.mapboxgl-marker').count();
-    expect(markers).toBeGreaterThan(0);
+    await page.waitForTimeout(6000); // laisse charger /api/fires
+    // Depuis la migration WebGL il n'y a plus aucun marker HTML : détections,
+    // foyers et aéronefs sont des couches Mapbox. On interroge donc le rendu.
+    const rendu = await page.evaluate(() => ({
+      couches: map.getStyle().layers.map(l => l.id).filter(id => /^(fires|foyers|avions)/.test(id)),
+      detections: map.queryRenderedFeatures({ layers: ['fires'] }).length,
+    }));
+    expect(rendu.couches).toContain('fires');
+    expect(rendu.couches).toContain('foyers-icon');
+    expect(rendu.detections).toBeGreaterThan(0);
   });
 
   test('défauts : light mode, fond plan, toutes les couches actives', async ({ page }) => {
@@ -86,10 +110,15 @@ test.describe('Front prod', () => {
     await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
     // Le toggle « Moyens aériens » existe et est actif par défaut.
     await expect(page.locator('[data-l="avions"]')).toHaveClass(/on/);
-    // Si des aéronefs sont en vol, des markers .avion-pin apparaissent.
-    if (d.count > 0) {
-      await expect(page.locator('.avion-pin').first()).toBeVisible({ timeout: 15000 });
-    }
+    // Les aéronefs sont eux aussi rendus en WebGL (plus de markers HTML) : on
+    // vérifie la couche, et les positions seulement si des appareils volent.
+    await page.waitForTimeout(6000);
+    const av = await page.evaluate(() => ({
+      couche: !!map.getLayer('avions-icons'),
+      positions: map.getSource('avions-pos')?._data?.features?.length ?? 0,
+    }));
+    expect(av.couche).toBeTruthy();
+    if (d.count > 0) expect(av.positions).toBeGreaterThan(0);
   });
 
   test('vignette de partage : balises Open Graph + Twitter Card servies', async ({ page }) => {
@@ -106,6 +135,33 @@ test.describe('Front prod', () => {
     expect(img.headers()['content-type']).toContain('image/jpeg');
     const buf = await img.body();
     expect(buf.length).toBeGreaterThan(10000); // pas un fichier vide/placeholder
+  });
+
+  test('la frise couvre 7 jours et rejoue la semaine', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    await page.waitForTimeout(6000);   // laisse arriver /api/fires
+    const st = await page.evaluate(() => ({
+      PAST_H, VIEW_H, SLIDER_NOW, SLIDER_MAX,
+      days: document.querySelectorAll('#tl-track .tl-day').length,
+      bars: document.querySelectorAll('#tl-track .tl-mbar').length,
+      points: allPoints.length,
+    }));
+    expect(st.PAST_H).toBe(168);
+    expect(st.VIEW_H).toBe(24);
+    expect(st.SLIDER_MAX).toBe(st.SLIDER_NOW + 24);   // +12 h au pas de 30 min
+    expect(st.days).toBeGreaterThanOrEqual(6);        // un séparateur par jour
+    expect(st.bars).toBeGreaterThan(10);
+    expect(st.points).toBeGreaterThan(1000);
+    // Scrub 5 jours en arrière : la semaine est réellement rejouable.
+    const back = await page.evaluate(() => {
+      setSlider(96);
+      const T = currentT(), ws = T - VIEW_H * 3.6e6;
+      return { visibles: allPoints.filter(p => p._ms <= T && p._ms > ws).length,
+               bulle: document.querySelector('.tl-bubble').textContent };
+    });
+    expect(back.visibles).toBeGreaterThan(0);
+    expect(back.bulle).not.toBe('MAINTENANT');
   });
 
   test('bouton Contribuer open source pointe vers le dépôt GitHub', async ({ page }) => {

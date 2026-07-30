@@ -466,7 +466,7 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
       <h1>Carte<em>·</em>Incendies</h1>
       <span class="live">DIRECT</span>
     </div>
-    <p class="subtitle">Détections thermiques par satellites NASA sur les dernières 24 h, territoire métropolitain.</p>
+    <p class="subtitle">Détections thermiques par satellites NASA sur les 7 derniers jours, territoire métropolitain.</p>
   </header>
 
   <div class="scroll">
@@ -685,9 +685,17 @@ let layers = {wind:true, ops:true, burned:true, avions:true};
 try { Object.assign(layers, JSON.parse(localStorage.getItem('ff-layers') || '{}')); } catch(_){}
 
 const HOUR = 3.6e6, STEP_MS = 30 * 60 * 1000;
-// Fenêtre de la frise : maintenant−24 h (val 0) à maintenant+12 h (val 72).
-// val 48 = maintenant (mode live). Pas de 30 min.
-const SLIDER_MAX = 72, SLIDER_NOW = 48;
+/* Frise : maintenant−PAST_H → maintenant+FUTURE_H, au pas de 30 min.
+   PAST_H suit la fenêtre servie par /api/fires (7 j de flux FIRMS publics).
+   VIEW_H reste la profondeur AFFICHÉE à un instant T donné : on rejoue la
+   semaine, mais on ne montre jamais plus de 24 h de détections d'un coup —
+   sinon un grand feu se réduit à une tache uniforme. */
+const PAST_H = 168, FUTURE_H = 12, VIEW_H = 24;
+const SLIDER_NOW = PAST_H * HOUR / STEP_MS;              // val du « maintenant »
+const SLIDER_MAX = SLIDER_NOW + FUTURE_H * HOUR / STEP_MS;
+/* Lecture animée : 1 h par tick (le pas de 30 min ferait 360 images et 3 min
+   de lecture pour une semaine). */
+const PLAY_STEP = 2, PLAY_MS = 200;
 let sliderVal = SLIDER_NOW;
 let playing = false, playTimer = null;
 
@@ -1212,11 +1220,11 @@ function render(){
   const now = Date.now(), T = currentT(), c = colors();
   const future = isFuture();
 
-  /* --- détections visibles : fenêtre glissante [winEnd-24h, winEnd] ---
-     En mode PRÉVISION (T > maintenant) la fenêtre est FIGÉE sur les 24 h
-     réelles (aucune détection future n'existe). */
+  /* --- détections visibles : fenêtre glissante [winEnd-VIEW_H, winEnd] ---
+     En mode PRÉVISION (T > maintenant) la fenêtre est FIGÉE sur les dernières
+     heures réelles (aucune détection future n'existe). */
   const winEnd = future ? now : T;
-  const winStart = winEnd - 24 * HOUR;
+  const winStart = winEnd - VIEW_H * HOUR;
 
   // Comptage + points visibles par foyer (pour les emprises), sans setData.
   let shown = 0;
@@ -1317,11 +1325,11 @@ function foyerPopup(f, now){
   const last = Date.parse(f.last_utc);
   let html = `<div class="pp"><div class="pp-t recent">🔥 ${title}</div>
     <div class="blk mes"><div class="sub">Détections<span class="tag mes">mesure satellite</span></div>
-    <k>Détections 24 h</k>${f.n != null ? f.n : 'n/d'}<br>
+    <k>Détections 7 j</k>${f.n != null ? f.n : 'n/d'}${f.n_24h != null ? ' <span style="color:var(--faint)">(dont ' + f.n_24h + ' sur 24 h)</span>' : ''}<br>
     <k>Dernière détection</k>${isFinite(last) ? esc(fmtStamp.format(new Date(last))) + ' — ' + esc(ago(now - last)) : 'n/d'}<br>
     <k>FRP max</k>${f.max_frp != null ? f.max_frp.toFixed(1) + ' MW' : 'n/d'}</div>
     <div class="blk est"><k>Empreinte satellite</k>${f.est_area_ha != null ? Math.round(f.est_area_ha) + ' ha' : 'n/d'}<span class="tag est">estimation</span><br>
-    <span style="color:var(--faint);font-size:11px">Empreinte estimée depuis les pixels satellite, non officielle.</span></div>`;
+    <span style="color:var(--faint);font-size:11px">Cumul des pixels satellite sur 7 j, non officiel — à comparer au périmètre EFFIS de la couche « Zones brûlées ».</span></div>`;
 
   const m = meteoByFoyer[f.id];
   if (m){
@@ -1590,24 +1598,31 @@ function updateRingEngine(){
 
 /* ============================================================
    Frise chronologique (pleine largeur, façon Windy)
-   Fenêtre : maintenant−24 h (val 0) → maintenant+12 h (val 72).
+   Fenêtre : maintenant−7 j (val 0) → maintenant+12 h (val SLIDER_MAX).
    ============================================================ */
 const fmtTlDay  = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', weekday:'short', day:'numeric'});
 const fmtTlHour = new Intl.DateTimeFormat('fr-FR', {timeZone:'Europe/Paris', hour:'numeric', hourCycle:'h23'});
 function parisHour(t){ return parseInt(fmtTlHour.format(t), 10); }
 function bubbleText(T){ return fmtTlDay.format(new Date(T)) + ' · ' + fmtHM.format(new Date(T)).replace(':', 'h'); }
 
+/* Granularité de la frise selon sa durée : sur une semaine, des barres et des
+   graduations horaires donneraient 180 traits de moins d'un pixel. */
+const TL_BUCKET_H = PAST_H > 48 ? 3 : 1;   // largeur d'une barre d'histogramme
+const TL_TICK_H   = PAST_H > 48 ? 6 : 1;   // graduation
+const TL_LABEL_H  = PAST_H > 48 ? 12 : 3;  // graduation étiquetée
+const TL_BUCKETS  = Math.round(PAST_H / TL_BUCKET_H);
+
 function renderTimeline(now, T){
   const track = document.getElementById('tl-track');
-  const start = now - 24 * HOUR, end = now + 12 * HOUR, span = end - start;
+  const start = now - PAST_H * HOUR, end = now + FUTURE_H * HOUR, span = end - start;
   const pct = t => (t - start) / span * 100;
   track.setAttribute('aria-valuenow', sliderVal);
 
-  // histogramme : détections par heure sur les 24 h passées
-  const counts = new Array(24).fill(0);
+  // histogramme : détections par tranche de TL_BUCKET_H sur la fenêtre passée
+  const counts = new Array(TL_BUCKETS).fill(0);
   allPoints.forEach(p => {
-    const hAgo = Math.floor((now - p._ms) / HOUR);
-    if (hAgo >= 0 && hAgo < 24) counts[23 - hAgo]++;
+    const hAgo = (now - p._ms) / HOUR;
+    if (hAgo >= 0 && hAgo < PAST_H) counts[TL_BUCKETS - 1 - Math.floor(hAgo / TL_BUCKET_H)]++;
   });
   const cmax = Math.max(1, ...counts);
 
@@ -1615,9 +1630,10 @@ function renderTimeline(now, T){
   const fx = pct(now);
   html += `<div class="tl-future" style="left:${fx}%;width:${100 - fx}%"><span class="lb">Prévision</span></div>`;
 
-  for (let i = 0; i < 24; i++){
+  for (let i = 0; i < TL_BUCKETS; i++){
     if (!counts[i]) continue;
-    const l = pct(now - (24 - i) * HOUR), w = pct(now - (23 - i) * HOUR) - l;
+    const l = pct(now - (TL_BUCKETS - i) * TL_BUCKET_H * HOUR);
+    const w = pct(now - (TL_BUCKETS - 1 - i) * TL_BUCKET_H * HOUR) - l;
     const hgt = 3 + Math.round(counts[i] / cmax * 22);
     html += `<div class="tl-mbar" style="left:${l}%;width:${Math.max(w - 0.3, 0.4)}%;height:${hgt}px"></div>`;
   }
@@ -1627,8 +1643,8 @@ function renderTimeline(now, T){
     if (ph === 0){
       html += `<div class="tl-day" style="left:${x}%"></div>`;
       html += `<div class="tl-dlabel" style="left:${x}%;transform:translateX(3px)">${fmtTlDay.format(t)}</div>`;
-    } else {
-      const maj = ph % 3 === 0;
+    } else if (ph % TL_TICK_H === 0){
+      const maj = ph % TL_LABEL_H === 0;
       html += `<div class="tl-tick${maj ? ' maj' : ''}" style="left:${x}%"></div>`;
       if (maj) html += `<div class="tl-hlabel" style="left:${x}%">${ph}h</div>`;
     }
@@ -1656,8 +1672,8 @@ function startPlay(){
   document.getElementById('tl-play').textContent = '⏸';
   playTimer = setInterval(() => {
     if (sliderVal >= SLIDER_MAX){ stopPlay(); return; }
-    setSlider(sliderVal + 1);
-  }, 600);
+    setSlider(sliderVal + PLAY_STEP);
+  }, PLAY_MS);
 }
 function stopPlay(){
   playing = false;
@@ -1719,7 +1735,7 @@ function renderFoyersPanel(){
       <div class="ico">🔥</div>
       <div class="body">
         <div class="nm">${nm}</div>
-        <div class="meta">${f.n != null ? f.n : '?'} détection${f.n > 1 ? 's' : ''} / 24 h`
+        <div class="meta">${f.n != null ? f.n : '?'} détection${f.n > 1 ? 's' : ''} / 7 j`
         + (f.est_area_ha != null ? ` · ~${Math.round(f.est_area_ha)} ha estimés` : '')
         + meteoLine + indLine + sousVent + `</div>
       </div></div>`;
@@ -2057,7 +2073,7 @@ async function loadFires(){
     feedsMeta = Array.isArray(d.feeds)  ? d.feeds  : [];
     renderFeeds();
     document.getElementById('updated').innerHTML =
-      'Actualisé à <b>' + esc(fmtHM.format(new Date(d.fetched_at_utc))) + '</b> · fenêtre 24 h glissante';
+      'Actualisé à <b>' + esc(fmtHM.format(new Date(d.fetched_at_utc))) + '</b> · fenêtre 7 j glissante';
     document.getElementById('error').style.display = 'none';
     renderFoyersPanel();
     refreshFires();                  // met à jour la source statique (hors scrub)

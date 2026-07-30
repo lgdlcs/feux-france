@@ -6,12 +6,12 @@ Carte interactive de veille des incendies en France métropolitaine, en temps r�
 
 **🧪 Démo statique** : https://lgdlcs.github.io/feux-france/ — instantané **figé et daté** (GitHub Pages ne peut pas héberger le backend), avec bandeau explicite ; pour le temps réel, lancez le serveur localement (ci-dessous). Régénérer la démo : `python3 scripts/make_demo.py` puis commit de `docs/`.
 
-- **Détections satellites** : NASA FIRMS (VIIRS 375 m ×3 + MODIS 1 km), fenêtre stricte de 24 h, filtrage précis sur le territoire métropolitain, regroupement en foyers actifs avec emprise estimée.
+- **Détections satellites** : NASA FIRMS (VIIRS 375 m ×3 + MODIS 1 km), fenêtre glissante de **7 jours** (le maximum des flux publics, sans clé API), filtrage précis sur le territoire métropolitain, regroupement en foyers actifs avec emprise estimée. Chaque foyer porte son cumul sur 7 j et son compte des dernières 24 h.
 - **Vents animés** : particules façon Windfinder, colorées par vitesse, pilotées par la frise (vent actuel ou vent **prévu** à l'instant sélectionné). Données Open-Meteo, grille 0,5° sur la métropole, un seul appel batch, cache 10 min.
 - **Prédictions** : panaches de propagation heure par heure par foyer (vent prévu intégré), communes évacuées « sous le vent », indice de conditions de propagation — **estimations simplifiées, non officielles**, toujours étiquetées comme telles.
 - **Zones brûlées** : périmètres officiels Copernicus EMS (délinéations CC-BY).
 - **Situation officielle & évacuations** : `situation.json` / `evacuations.json`, tenus à la main à partir des communiqués préfectoraux relayés par la presse ; chaque chiffre est sourcé et daté, l'inconnu s'affiche « n.c. ».
-- **Frise chronologique** : −24 h → +12 h (zone prévision), lecture animée, scrub fluide (filtrage GPU).
+- **Frise chronologique** : **−7 j → +12 h** (zone prévision), lecture animée de la semaine, scrub fluide (filtrage GPU). À un instant donné on affiche 24 h de détections, pour qu'un grand feu ne devienne pas une tache uniforme.
 
 **Principe non négociable : aucune donnée inventée.** Les détections sont des anomalies thermiques satellites, pas des périmètres officiels. Seules les consignes préfectorales font foi. En cas de danger : **18 / 112**.
 
@@ -39,7 +39,7 @@ Le frontend utilise un jeton public Mapbox (`pk.…` dans `public/index.html`). 
 
 | Donnée | Source | Licence / accès |
 |---|---|---|
-| Détections thermiques | [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) (flux publics 24 h, sans clé) | domaine public |
+| Détections thermiques | [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) (flux publics 7 j, sans clé) | domaine public |
 | Météo & vents | [Open-Meteo](https://open-meteo.com/) | CC-BY 4.0, sans clé |
 | Zones brûlées | [Copernicus EMS](https://emergency.copernicus.eu/) | CC-BY |
 | Situation / évacuations | communiqués préfectoraux via presse, saisis à la main | sourcé entrée par entrée |
