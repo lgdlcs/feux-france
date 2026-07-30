@@ -28,7 +28,7 @@ test.describe('APIs prod', () => {
     const d = await r.json();
     expect(d).toHaveProperty('count');
     expect(Array.isArray(d.aircraft)).toBeTruthy();
-    expect(d.trace_hours).toBe(3);
+    expect(d.trace_hours).toBe(1);   // 3 h repliait la trace d'un Canadair sur elle-même
     // Si des aéronefs sont en vol : trace = liste de [lat,lon].
     for (const a of d.aircraft.slice(0, 3)) {
       expect(typeof a.lat).toBe('number');

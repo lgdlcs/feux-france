@@ -1008,11 +1008,11 @@ function installLayers(){
     map.addLayer({id:'cones-line', type:'line', source:'cones',
       paint:{'line-color':colors().ember, 'line-width':1.2, 'line-opacity':0.85, 'line-dasharray':[2,2]}}, before);
   }
-  // Traces GPS des moyens aériens (3 h glissantes) — couleur par catégorie (sous les icônes).
+  // Traces GPS des moyens aériens (1 h glissante) — couleur par catégorie (sous les icônes).
   if (!map.getLayer('avions-traces-line')){
     map.addLayer({id:'avions-traces-line', type:'line', source:'avions-traces',
       layout:{'line-cap':'round', 'line-join':'round'},
-      paint:{'line-color':catColorExpr(), 'line-width':2, 'line-opacity':0.7}}, before);
+      paint:{'line-color':catColorExpr(), 'line-width':1.6, 'line-opacity':0.5}}, before);
   }
   // Anneau pulsant des foyers (animé par updateRingEngine) — sous l'icône flamme.
   if (!map.getLayer('foyers-ring')){
@@ -1981,7 +1981,7 @@ function renderOps(){
 
 /* ============================================================
    Moyens aériens — flotte Sécurité Civile (Canadair, Dash, hélicos Dragon…).
-   Couches Mapbox : silhouettes SDF teintées par catégorie + traces (3 h) via
+   Couches Mapbox : silhouettes SDF teintées par catégorie + traces (1 h) via
    /api/aircraft. Liées à la frise : en scrub passé, positions/traces clippées
    à t ≤ tSel (aucune position inventée). Format v2 : trace = [[t,lat,lon],…].
    ============================================================ */
@@ -2017,7 +2017,7 @@ function renderAvions(){
       const helico = cat === 'helico' ? 1 : 0;
       let posLon, posLat, track = 0, notrack = 0, coords;
       if (!past){
-        // live/futur : position courante + trace 3 h complète (rien d'inventé au futur).
+        // live/futur : position courante + trace 1 h complète (rien d'inventé au futur).
         if (a.lat == null || a.lon == null) return;
         posLon = a.lon; posLat = a.lat;
         if (!helico && a.track != null) track = a.track;
@@ -2104,7 +2104,7 @@ function updateAvionLegend(){
                ['liaison','Liaison / reco'],['autre',"Autre aéronef d'État"]];
   card.innerHTML = '<div class="hud-h">Moyens aériens</div>'
     + rows.map(([k, lb]) => `<div class="av-leg"><span class="av-dot" style="background:${c[k]}"></span>${esc(lb)}</div>`).join('')
-    + '<div class="av-note">traces 3 h · ADS-B adsb.fi</div>';
+    + '<div class="av-note">traces 1 h · ADS-B adsb.fi</div>';
 }
 function toggleLayer(key){
   layers[key] = !layers[key];
@@ -2389,9 +2389,12 @@ function updateWindLegend(){
 /* --- moteur d'animation (rAF) --- */
 let windParticles = null, windRaf = null, windCount = 0;
 const WIND_K = 0.0032;   // facteur d'avancement de base (calibré visuellement, ~px/frame constant selon zoom)
+/* Densité des particules. Le vent est un décor : il indique un régime et une
+   direction, il ne se lit pas point par point. À 3 000 traînées l'écran se
+   remplissait au point de concurrencer les foyers, qui sont le sujet. */
 function initParticles(){
   const w = windCanvas.width, h = windCanvas.height;
-  windCount = Math.min(3000, Math.round(w*h/700/windDpr/windDpr));
+  windCount = Math.min(1200, Math.round(w*h/1500/windDpr/windDpr));
   windParticles = new Array(windCount);
   for (let i=0;i<windCount;i++) windParticles[i] = spawnParticle();
 }
@@ -2421,11 +2424,13 @@ function windFrame(){
   if (!windRunning()){ if (windCtx&&windCanvas) windCtx.clearRect(0,0,windCanvas.width,windCanvas.height); return; }
   const ctx = windCtx, W = windCanvas.width, H = windCanvas.height;
   // fondu des traînées existantes
+  // 0,90 au lieu de 0,94 : la traînée s'efface plus vite, donc elle est plus
+  // courte et la carte reste lisible dessous.
   ctx.globalCompositeOperation = 'destination-in';
-  ctx.fillStyle = 'rgba(0,0,0,0.94)';
+  ctx.fillStyle = 'rgba(0,0,0,0.90)';
   ctx.fillRect(0,0,W,H);
   ctx.globalCompositeOperation = 'source-over';
-  ctx.lineWidth = 1.2 * windDpr;
+  ctx.lineWidth = 1 * windDpr;
   ctx.lineCap = 'round';
 
   const zoom = map.getZoom();
@@ -2445,7 +2450,7 @@ function windFrame(){
     const nlon = p.lng + f.u * k / Math.cos(p.lat * Math.PI/180);
     const bpt = map.project([nlon, nlat]);
     const col = windColor(f.spd);
-    ctx.strokeStyle = 'rgba('+col[0]+','+col[1]+','+col[2]+',0.85)';
+    ctx.strokeStyle = 'rgba('+col[0]+','+col[1]+','+col[2]+',0.6)';
     ctx.beginPath();
     ctx.moveTo(a.x*windDpr, a.y*windDpr);
     ctx.lineTo(bpt.x*windDpr, bpt.y*windDpr);

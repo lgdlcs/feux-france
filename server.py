@@ -957,7 +957,11 @@ def burned_loop():
 # la métropole continentale (la Corse tombe en limite sud-est, acceptable).
 ADSB_URL = "https://opendata.adsb.fi/api/v2/lat/46.6/lon/2.5/dist/250"
 AIRCRAFT_POLL = 45              # secondes entre deux relevés de positions
-AIRCRAFT_TRACE_SEC = 3 * 3600   # fenêtre glissante des traces : 3 h
+# Fenêtre glissante des traces. À 3 h, un Canadair en rotation accumulait des
+# dizaines d'allers-retours sur le même axe : le trait se repliait sur lui-même
+# et traversait la moitié du pays sans rien apprendre de plus. 1 h suffit à lire
+# la noria en cours et à voir d'où vient l'appareil.
+AIRCRAFT_TRACE_SEC = 3600
 AIRCRAFT_MIN_MOVE = 0.0015      # ~150 m : on n'ajoute un point que s'il a bougé
 # Callsigns Sécurité Civile connus, en secours si l'immat n'est pas diffusée.
 AIRCRAFT_CALLSIGNS = ("PELICAN", "MILAN", "DRAGON", "BENGALE", "CANADAIR")
