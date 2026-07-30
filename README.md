@@ -4,8 +4,6 @@ Carte interactive de veille des incendies en France métropolitaine, en temps r�
 
 **🌍 Site officiel (temps réel)** : **https://carte-incendies.fr**
 
-**🧪 Démo statique** : https://lgdlcs.github.io/feux-france/ — instantané **figé et daté** (GitHub Pages ne peut pas héberger le backend), avec bandeau explicite ; pour le temps réel, lancez le serveur localement (ci-dessous). Régénérer la démo : `python3 scripts/make_demo.py` puis commit de `docs/`.
-
 - **Détections satellites** : NASA FIRMS (VIIRS 375 m ×3 + MODIS 1 km), fenêtre glissante de **7 jours** (le maximum des flux publics, sans clé API), filtrage précis sur le territoire métropolitain, regroupement en foyers actifs avec emprise estimée. Chaque foyer porte son cumul sur 7 j et son compte des dernières 24 h.
 - **Vents animés** : particules façon Windfinder, colorées par vitesse, pilotées par la frise (vent actuel ou vent **prévu** à l'instant sélectionné). Données Open-Meteo, grille 0,5° sur la métropole, un seul appel batch, cache 10 min.
 - **Prédictions** : panaches de propagation heure par heure par foyer (vent prévu intégré), communes évacuées « sous le vent », indice de conditions de propagation — **estimations simplifiées, non officielles**, toujours étiquetées comme telles.
