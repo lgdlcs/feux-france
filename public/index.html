@@ -857,6 +857,12 @@ const emptyFC = () => ({type:'FeatureCollection', features:[]});
    GeoJSON des détections (construit UNE fois par cycle de données ;
    jamais pendant le scrub — voir render()).
    ============================================================ */
+/* Le libellé du satellite n'est plus répété sur chacune des ~11 000 détections :
+   il est reconstruit ici depuis `feeds` (id -> label), livré une seule fois. */
+function satLabel(source){
+  const f = feedsMeta.find(x => x.id === source);
+  return f ? f.label : (source || '');
+}
 function firesGeoJSON(){
   return {
     type:'FeatureCollection',
@@ -867,7 +873,7 @@ function firesGeoJSON(){
         acq_utc_ms: p._ms,
         acq_utc: p.acq_utc,
         frp: p.frp,
-        satellite: p.satellite,
+        satellite: satLabel(p.source),
         confidence: p.confidence,
         daynight: p.daynight,
         foyer_id: p.foyer_id == null ? -1 : p.foyer_id,
@@ -2619,8 +2625,20 @@ loadSituation();
 loadNational();
 if (layers.avions)    loadAircraft();      // moyens aériens en direct
 
-setInterval(() => { loadFires(); loadSituation(); loadNational(); loadWindIfNeeded(); }, 10 * 60 * 1000);  // flux serveur
-setInterval(() => { if (layers.avions) loadAircraft(); }, 45 * 1000);                       // traces aériennes (~45 s)
+/* Un onglet laissé ouvert en arrière-plan ne sert à personne : on suspend les
+   rafraîchissements tant qu'il n'est pas visible, et on rattrape le retard au
+   retour. Une journée d'onglet oublié coûtait ~20 Mo de bande passante. */
+let missedRefresh = false;
+function pollServerFeeds(){
+  if (document.hidden){ missedRefresh = true; return; }
+  loadFires(); loadSituation(); loadNational(); loadWindIfNeeded();
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && missedRefresh){ missedRefresh = false; pollServerFeeds(); }
+});
+
+setInterval(pollServerFeeds, 10 * 60 * 1000);                                               // flux serveur
+setInterval(() => { if (layers.avions && !document.hidden) loadAircraft(); }, 45 * 1000);   // traces aériennes (~45 s)
 setInterval(() => { if (isLive()) render(); }, 60 * 1000);                                  // recalcul des âges en live
 </script>
 </body>
