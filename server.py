@@ -631,7 +631,8 @@ EFFIS_VIEWER = "https://forest-fire.emergency.copernicus.eu/effis-current-situat
 EFFIS_TIMEOUT = 300         # le WFS peut réellement mettre plusieurs minutes
 BURNED_TTL = 6 * 3600       # EFFIS ne republie que 1 à 2 fois par jour
 BURNED_PATH = ROOT / "public" / "burned.geojson"
-BURNED_DP = 5               # ~1 m : largement assez pour un périmètre ~250 m
+BURNED_DP = 4               # ~11 m : sans commune mesure avec la résolution EFFIS
+                            # (~250 m), et ~80 Ko gzip de moins qu'en 5 décimales
 BURNED_SIMPLIFY = 0.0004    # ~45 m : très en dessous de la résolution EFFIS (~250 m)
 BURNED_MIN_FEATURES = 50    # en dessous, on suspecte une réponse tronquée
 BURNED_KEEP_RATIO = 0.5     # un build deux fois plus pauvre n'écrase pas l'acquis
@@ -721,6 +722,29 @@ def simplify_ring(ring, tol):
     return out + [out[0]] if closed else out
 
 
+def dedupe_ring(ring):
+    """Retire les positions consécutives identiques. L'arrondi à BURNED_DP peut
+    faire coïncider deux sommets voisins : ils ne dessinent plus rien mais
+    pèsent encore une vingtaine d'octets chacun. L'anneau reste fermé."""
+    if len(ring) < 2:
+        return ring
+    out = [ring[0]]
+    for pt in ring[1:]:
+        if pt != out[-1]:
+            out.append(pt)
+    if len(out) < 3:
+        return ring
+    if out[0] != out[-1]:
+        out.append(out[0])
+    return out if len(out) >= 4 else ring
+
+
+def dedupe_geometry(coords, depth):
+    if depth <= 1:
+        return dedupe_ring(coords)
+    return [dedupe_geometry(child, depth - 1) for child in coords]
+
+
 def simplify_geometry(coords, depth):
     """Applique simplify_ring à chaque anneau. `depth` est le nombre de niveaux
     de listes restant à traverser avant d'atteindre un anneau (2 pour un
@@ -737,9 +761,9 @@ def clean_geometry(geometry):
     gtype = geometry.get("type")
     coords = swap_round(geometry.get("coordinates"))
     if gtype == "Polygon":
-        coords = simplify_geometry(coords, 2)
+        coords = dedupe_geometry(simplify_geometry(coords, 2), 2)
     elif gtype == "MultiPolygon":
-        coords = simplify_geometry(coords, 3)
+        coords = dedupe_geometry(simplify_geometry(coords, 3), 3)
     return {"type": gtype, "coordinates": coords}
 
 
@@ -840,8 +864,6 @@ def build_burned():
                     "commune": commune,
                     "province": province,
                     "kind": "dated",
-                    "source_url": EFFIS_VIEWER,
-                    "source_label": "EFFIS / Copernicus",
                 },
             })
 
@@ -865,24 +887,23 @@ def build_burned():
             features.append({
                 "type": "Feature",
                 "geometry": geom,
-                "properties": {
-                    "label": None,
-                    "date": None,
-                    "kind": "nrt",
-                    "source_url": EFFIS_VIEWER,
-                    "source_label": "EFFIS / Copernicus (NRT)",
-                },
+                "properties": {"kind": "nrt"},
             })
 
     nrt = None
 
     if len(features) < BURNED_MIN_FEATURES:
         raise ValueError(f"EFFIS : seulement {len(features)} périmètres, build écarté")
+    # `source_url` / `source_label` sont identiques pour toutes les entités :
+    # ils sont portés par la collection, pas répétés 4 000 fois (le client les
+    # reconstruit par `kind`).
     return {
         "type": "FeatureCollection",
         "generator": BURNED_MARKER,
         "generated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "sources": sources,
+        "source_url": EFFIS_VIEWER,
+        "source_label": {"dated": "EFFIS / Copernicus", "nrt": "EFFIS / Copernicus (NRT)"},
         "features": features,
     }
 
