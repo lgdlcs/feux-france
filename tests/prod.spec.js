@@ -36,6 +36,21 @@ test.describe('APIs prod', () => {
       expect(Array.isArray(a.trace)).toBeTruthy();
     }
   });
+
+  test('/api/fires répond vite, même à plusieurs en même temps', async ({ request }) => {
+    // La panne du 30/07 : in_france() testait chaque point contre 31 292
+    // sommets sans index, et get_data() laissait chaque visiteur lancer sa
+    // propre collecte complète. Sur le petit CPU de l'hébergement, aucune ne
+    // se terminait et /api/fires ne répondait plus jamais. Ce test vérifie le
+    // contrat visible : la réponse arrive, et la concurrence ne l'écroule pas.
+    const t0 = Date.now();
+    const rs = await Promise.all([1, 2, 3, 4, 5].map(() => request.get(`${BASE}/api/fires`)));
+    const dt = (Date.now() - t0) / 1000;
+    for (const r of rs) expect(r.ok()).toBeTruthy();
+    expect(dt).toBeLessThan(25);   // large : c'est l'écroulement qu'on traque, pas la milliseconde
+    const d = await rs[0].json();
+    expect(d.count).toBeGreaterThan(0);
+  });
 });
 
 test.describe('Front prod', () => {

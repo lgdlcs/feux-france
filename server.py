@@ -116,8 +116,9 @@ def load_france_rings():
 
 FRANCE_RINGS = load_france_rings()
 
-
 def point_in_ring(lon, lat, ring):
+    """Lancer de rayon même-impair sur un seul anneau. Conservée telle quelle :
+    elle sert de référence au test d'équivalence de l'index ci-dessous."""
     inside = False
     j = len(ring) - 1
     for i in range(len(ring)):
@@ -129,8 +130,53 @@ def point_in_ring(lon, lat, ring):
     return inside
 
 
+# Index par bandes de latitude. Testé naïvement, un point était comparé aux
+# 31 292 sommets du contour métropolitain — 3,4 ms, dont l'essentiel dans le
+# seul anneau continental (les 166 autres sont minuscules). En fenêtre 7 jours
+# cela faisait une minute de calcul par cycle sur une machine de bureau, et
+# plusieurs minutes sur le demi-cœur de l'hébergement : le cache n'était jamais
+# rempli et /api/fires ne répondait plus.
+#
+# Une arête ne peut être franchie par le rayon horizontal d'un point que si
+# celui-ci est dans sa plage de latitudes. On range donc les arêtes par bande de
+# 0,05° et on ne teste que celles de la bande du point. Les anneaux étant
+# disjoints (uniquement des contours extérieurs, aucun trou), compter les
+# croisements de TOUS les anneaux d'un coup donne le même résultat que tester
+# chaque anneau séparément : le point est dedans si le total est impair.
+BAND = 0.05
+LAT0 = min(p[1] for r in FRANCE_RINGS for p in r)
+
+
+def build_france_index():
+    buckets = {}
+    for ring in FRANCE_RINGS:
+        j = len(ring) - 1
+        for i in range(len(ring)):
+            x1, y1 = ring[j][0], ring[j][1]
+            x2, y2 = ring[i][0], ring[i][1]
+            j = i
+            if y1 == y2:
+                continue  # arête horizontale : jamais franchie par un rayon horizontal
+            b0 = int((min(y1, y2) - LAT0) / BAND)
+            b1 = int((max(y1, y2) - LAT0) / BAND)
+            edge = (x1, y1, x2, y2)
+            for b in range(b0, b1 + 1):
+                buckets.setdefault(b, []).append(edge)
+    return buckets
+
+
+FRANCE_BANDS = build_france_index()
+
+
 def in_france(lon, lat):
-    return any(point_in_ring(lon, lat, r) for r in FRANCE_RINGS)
+    edges = FRANCE_BANDS.get(int((lat - LAT0) / BAND))
+    if not edges:
+        return False   # hors de l'emprise : aucune arête à franchir
+    inside = False
+    for x1, y1, x2, y2 in edges:
+        if (y1 > lat) != (y2 > lat) and lon < (x2 - x1) * (lat - y1) / (y2 - y1) + x1:
+            inside = not inside
+    return inside
 
 
 _cache = {"data": None, "ts": 0}
@@ -331,18 +377,36 @@ def _store_fires(data):
         _cache["ts"] = time.time()
 
 
-def get_data():
-    """Sert le cache tel quel (le thread d'arrière-plan tient la fraîcheur).
-    Ne construit en direct que si le cache est encore vide (tout premier
-    instant après le démarrage) — jamais de donnée périmée au-delà du cycle
-    de rafraîchissement, jamais d'attente FIRMS pour un visiteur."""
-    with _lock:
-        data = _cache["data"]
+def cold_start(cache, cache_lock, build_lock, build, store):
+    """Sert le cache tel quel (le thread d'arrière-plan tient la fraîcheur) et
+    ne construit en direct que s'il est encore vide — le tout premier instant
+    après le démarrage.
+
+    Un seul constructeur à la fois, et on relit le cache après avoir obtenu le
+    verrou. Sans ça, chaque visiteur arrivé pendant ce trou lançait sa PROPRE
+    collecte complète : sur le petit CPU de l'hébergement elles se ralentissaient
+    mutuellement et aucune ne se terminait jamais, si bien que le cache restait
+    vide indéfiniment et que /api/fires ne répondait plus du tout. Ici les
+    visiteurs attendent la même construction au lieu de la multiplier."""
+    with cache_lock:
+        data = cache["data"]
     if data is not None:
         return data
-    data = build_payload()
-    _store_fires(data)
+    with build_lock:
+        with cache_lock:
+            data = cache["data"]
+        if data is not None:
+            return data      # un autre l'a construit pendant qu'on attendait
+        data = build()
+        store(data)
     return data
+
+
+_fires_build_lock = threading.Lock()
+
+
+def get_data():
+    return cold_start(_cache, _lock, _fires_build_lock, build_payload, _store_fires)
 
 
 # ---------------------------------------------------------------------------
@@ -430,14 +494,11 @@ def _store_wind(data):
         _wind_cache["ts"] = time.time()
 
 
+_wind_build_lock = threading.Lock()
+
+
 def get_wind():
-    with _wind_lock:
-        data = _wind_cache["data"]
-    if data is not None:
-        return data
-    data = build_wind()
-    _store_wind(data)
-    return data
+    return cold_start(_wind_cache, _wind_lock, _wind_build_lock, build_wind, _store_wind)
 
 
 # ---------------------------------------------------------------------------
@@ -502,14 +563,12 @@ def _store_national(data):
         _national_cache["ts"] = time.time()
 
 
+_national_build_lock = threading.Lock()
+
+
 def get_national():
-    with _national_lock:
-        data = _national_cache["data"]
-    if data is not None:
-        return data
-    data = build_national()
-    _store_national(data)
-    return data
+    return cold_start(_national_cache, _national_lock, _national_build_lock,
+                      build_national, _store_national)
 
 
 # ---------------------------------------------------------------------------
