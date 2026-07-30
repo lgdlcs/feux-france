@@ -196,6 +196,49 @@ test.describe('Front prod', () => {
     expect(back.bulle).not.toBe('MAINTENANT');
   });
 
+  test('la vue de l\'utilisateur est mémorisée d\'une visite à l\'autre', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    // Vue par défaut : la métropole entière.
+    expect(await page.evaluate(() => +map.getZoom().toFixed(1))).toBeLessThan(6);
+    // L'utilisateur se déplace sur un feu.
+    await page.evaluate(async () => {
+      map.jumpTo({ center: [-1.15, 44.85], zoom: 10 });
+      await new Promise(r => setTimeout(r, 1200));   // laisse passer moveend
+    });
+    // Il revient : on le remet où il était, pas sur la France entière.
+    await page.reload({ waitUntil: 'networkidle' });
+    const v = await page.evaluate(() => ({
+      zoom: +map.getZoom().toFixed(2),
+      lon: +map.getCenter().lng.toFixed(2),
+      lat: +map.getCenter().lat.toFixed(2),
+    }));
+    expect(v.zoom).toBeCloseTo(10, 1);
+    expect(v.lon).toBeCloseTo(-1.15, 1);
+    expect(v.lat).toBeCloseTo(44.85, 1);
+    // Un stockage corrompu ou aberrant ne doit pas expédier la carte ailleurs.
+    const rejets = await page.evaluate(() => {
+      const cas = ['pas du json', JSON.stringify({ center: [-140, 12], zoom: 9 }),
+                   JSON.stringify({ center: [999, 'x'], zoom: null })];
+      return cas.map(c => { localStorage.setItem('ff-vue', c); return vueMemorisee(); });
+    });
+    expect(rejets).toEqual([null, null, null]);
+    await page.reload({ waitUntil: 'networkidle' });
+    expect(await page.evaluate(() => +map.getZoom().toFixed(1))).toBeLessThan(6);
+  });
+
+  test('les détections rapetissent en vue nationale', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    // Le rayon doit dépendre du zoom : sinon une détection couvre ~50 km en vue
+    // France et les points se fondent en pâtés qui masquent la carte.
+    const r = await page.evaluate(() => {
+      const expr = map.getPaintProperty('fires', 'circle-radius');
+      return { expr: JSON.stringify(expr), zoomDependant: JSON.stringify(expr).includes('"zoom"') };
+    });
+    expect(r.zoomDependant).toBeTruthy();
+  });
+
   test('bouton Contribuer open source pointe vers le dépôt GitHub', async ({ page }) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     const btn = page.locator('#contrib-btn');

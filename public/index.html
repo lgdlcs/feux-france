@@ -606,11 +606,49 @@ let currentBase = localStorage.getItem('ff-base') || 'plan';
 if (!STYLES[currentBase]) currentBase = 'plan';
 
 const ATTRIB = 'Feux : NASA FIRMS · Zones brûlées : EFFIS / Copernicus (CC-BY)';
+
+// Vue par défaut : la métropole entière.
+const VUE_DEFAUT = {center:[2.6, 46.6], zoom:4.8};
+
+/* Dernière vue de l'utilisateur. Quelqu'un qui suit un feu près de chez lui
+   revient plusieurs fois par jour : le renvoyer sur la France entière à chaque
+   visite lui fait refaire le même trajet. On ne restaure que des valeurs
+   plausibles — un localStorage corrompu ou une vue héritée d'un autre usage
+   ne doit pas expédier la carte au milieu de l'Atlantique. */
+function vueMemorisee(){
+  try {
+    const v = JSON.parse(localStorage.getItem('ff-vue') || 'null');
+    if (!v) return null;
+    const [lon, lat] = v.center || [];
+    if (typeof lon !== 'number' || typeof lat !== 'number' ||
+        typeof v.zoom !== 'number' || !isFinite(lon) || !isFinite(lat)) return null;
+    // Large : la carte reste manipulable au-delà de la métropole (frontières,
+    // Corse), on écarte seulement l'aberrant.
+    if (lon < -20 || lon > 25 || lat < 30 || lat > 60) return null;
+    if (v.zoom < 3 || v.zoom > 18) return null;
+    return {center:[lon, lat], zoom:v.zoom};
+  } catch(_){ return null; }
+}
+
+const vueInitiale = vueMemorisee() || VUE_DEFAUT;
 const map = new mapboxgl.Map({
   container:'map',
   style: STYLES[currentBase][theme],
-  center:[2.6, 46.6], zoom:4.8,
+  center: vueInitiale.center, zoom: vueInitiale.zoom,
   attributionControl:false,
+});
+
+/* Enregistré à la fin du mouvement seulement : pendant un zoom il y a des
+   dizaines d'événements par seconde, et écrire dans localStorage à ce rythme
+   fait sauter l'animation. */
+map.on('moveend', () => {
+  try {
+    const c = map.getCenter();
+    localStorage.setItem('ff-vue', JSON.stringify({
+      center:[+c.lng.toFixed(4), +c.lat.toFixed(4)],
+      zoom:+map.getZoom().toFixed(2),
+    }));
+  } catch(_){ /* quota plein ou mode privé : la vue n'est pas mémorisée, tant pis */ }
 });
 map.addControl(new mapboxgl.AttributionControl({customAttribution: ATTRIB}), 'bottom-right');
 map.addControl(new mapboxgl.NavigationControl({showCompass:false}), 'bottom-right');
@@ -902,6 +940,23 @@ function setFrenchLabels(){
   }
 }
 
+/* Rayon des détections : proportionnel à la puissance radiative (FRP), mais
+   ramené à l'échelle de la vue. Un rayon fixe de 4 à 15 px couvre jusqu'à 50 km
+   sur une vue France entière : les feux agricoles et les sources de chaleur
+   industrielles, qui piquent partout, se fondaient alors en gros pâtés gris qui
+   cachaient la carte et laissaient croire à un incendie là où il n'y en a pas.
+   En dézoomant on garde un point net, et l'écart de taille entre un vrai
+   incendie et une détection isolée reste lisible. */
+function firesRadius(){
+  const frp = ['max', 4, ['min', 15, ['+', 3, ['*', ['sqrt', ['max', ['get','frp'], 0]], 1.6]]]];
+  const at = f => ['max', 1.6, ['*', frp, f]];
+  return ['interpolate', ['linear'], ['zoom'],
+    4,  at(0.22),    // France entière : des points, pas des taches
+    6,  at(0.45),    // région
+    8,  at(0.8),     // département
+    10, frp];        // à partir du massif, taille réelle
+}
+
 function installLayers(){
   setFrenchLabels();
   const before = firstSymbolId();   // nos couches data passent SOUS les labels de villes
@@ -940,7 +995,7 @@ function installLayers(){
   if (!map.getLayer('fires')){
     map.addLayer({id:'fires', type:'circle', source:'fires',
       paint:{
-        'circle-radius':['max',4,['min',15,['+',3,['*',['sqrt',['max',['get','frp'],0]],1.6]]]],
+        'circle-radius':firesRadius(),
         'circle-color':colors().fire,
         'circle-opacity':0.72,
         'circle-stroke-width':0.8,
@@ -1254,8 +1309,11 @@ function render(){
       future ? 0.72 * 0.55 : ['case', ['<', ageH, 3], 0.95, 0.72]);
     map.setPaintProperty('fires','circle-stroke-color',
       future ? step : ['case', ['<', ageH, 3], recentStroke, step]);
+    // Le contour s'efface avec le rayon : sur un point de 1,6 px il doublait la
+    // tache au lieu de la souligner.
+    const sw = future ? 0.8 : ['case', ['<', ageH, 3], 1.5, 0.8];
     map.setPaintProperty('fires','circle-stroke-width',
-      future ? 0.8 : ['case', ['<', ageH, 3], 1.5, 0.8]);
+      ['interpolate', ['linear'], ['zoom'], 5, 0, 8, sw]);
   }
 
   /* --- emprises réelles des foyers : enveloppes convexes (setData, peu de features) --- */
