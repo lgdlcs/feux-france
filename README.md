@@ -27,7 +27,7 @@ Aucune dépendance (Python stdlib ; Mapbox GL JS via CDN). Actualisation automat
 Le serveur lit `PORT` et `HOST` dans l'environnement (défauts : 8741 / 127.0.0.1 en local, 0.0.0.0 dès que `PORT` est défini).
 
 - **Render** : `render.yaml` inclus — « New + » → Blueprint → ce repo (plan gratuit possible, avec mise en veille après inactivité).
-- **Docker** : `docker build -t feux-france . && docker run -p 8741:8741 feux-france` (fonctionne sur Fly.io, Railway, un VPS…).
+- **Docker** : `docker build -t carte-incendies . && docker run -p 8741:8741 carte-incendies` (fonctionne sur Fly.io, Railway, un VPS…).
 
 ### Clé Mapbox
 

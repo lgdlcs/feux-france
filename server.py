@@ -211,7 +211,7 @@ def normalize_confidence(raw):
 
 
 def fetch_feed(feed):
-    req = urllib.request.Request(feed["url"], headers={"User-Agent": "feux-france-local/1.0"})
+    req = urllib.request.Request(feed["url"], headers={"User-Agent": "carte-incendies-local/1.0"})
     # Les flux 7 jours pèsent plusieurs Mo : marge plus large qu'en 24 h.
     with urllib.request.urlopen(req, timeout=120) as resp:
         text = resp.read().decode("utf-8")
@@ -269,7 +269,7 @@ def reverse_geocode(lat, lon):
     try:
         qs = urllib.parse.urlencode({"lat": f"{lat:.5f}", "lon": f"{lon:.5f}", "fields": "nom"})
         url = f"https://geo.api.gouv.fr/communes?{qs}"
-        req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "carte-incendies-local/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if isinstance(data, list) and data:
@@ -489,7 +489,7 @@ def build_wind():
            "&models=meteofrance_arome_france_hd" +
            "&forecast_hours=13" +
            "&timezone=Europe%2FParis")
-    req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "carte-incendies-local/1.0"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     arr = data if isinstance(data, list) else [data]
@@ -557,7 +557,7 @@ def build_national():
     Ne somme que les semaines dont la date est déjà passée (les entrées
     futures sont des placeholders à ignorer)."""
     url = EFFIS_URL.format(year=time.strftime("%Y", time.gmtime()))
-    req = urllib.request.Request(url, headers={"User-Agent": "feux-france-local/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "carte-incendies-local/1.0"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     weeks = data.get("banfweekly") if isinstance(data, dict) else None
@@ -645,7 +645,7 @@ def effis_wfs(typename, timeout=EFFIS_TIMEOUT):
            f"&typename=ms:{typename}&outputformat=geojson"
            f"&bbox={w},{s},{e},{n}")
     req = urllib.request.Request(url, headers={
-        "User-Agent": "feux-france/1.0 (carte-incendies.fr)",
+        "User-Agent": "carte-incendies/1.0 (carte-incendies.fr)",
         "Accept": "application/json",
     })
     # Les octets bruts sont libérés dès le décodage, et le texte dès le parsing :
@@ -987,7 +987,7 @@ def build_aircraft():
     """Relève les positions ADS-B, filtre la flotte Sécurité Civile (immat F-Z*
     ou callsign connu), met à jour les traces glissantes et renvoie l'instantané."""
     req = urllib.request.Request(ADSB_URL, headers={
-        "User-Agent": "feux-france/1.0 (carte-incendies.fr)",
+        "User-Agent": "carte-incendies/1.0 (carte-incendies.fr)",
         "Accept": "application/json",
     })
     with urllib.request.urlopen(req, timeout=25) as resp:

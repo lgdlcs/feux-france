@@ -243,7 +243,7 @@ test.describe('Front prod', () => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     const btn = page.locator('#contrib-btn');
     await expect(btn).toBeVisible();
-    await expect(btn).toHaveAttribute('href', /github\.com\/.+\/feux-france/);
+    await expect(btn).toHaveAttribute('href', /github\.com\/.+\/carte-incendies/);
     await expect(btn).toHaveAttribute('target', '_blank');
   });
 });
