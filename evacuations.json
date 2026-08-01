@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-01T19:00:00Z",
+  "updated": "2026-08-02T00:00:00Z",
   "_comment": "Fichier maintenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/evacuations. Coordonnées = centres officiels geo.api.gouv.fr, ou estimée pour des portions de commune ou regroupement de lieux-dits.",
 
   "retours": [
@@ -267,7 +267,49 @@
 
     {  "_comment": "département des Landes"  },
     {
-    }
+      "annonce": "2026-07-27",
+      "commune": "Sanguinet",
+      "dept": "Gironde (33)",
+      "lat": 44.4776,
+      "lon": -1.0903,
+      "population": 4741,
+      "statut": "Retour total : les habitants des communes de Sanguinet et de Parentis-en-Born",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/Actualites/Actualites/Retour-des-habitants-dans-les-secteurs-mis-en-securite-de-Biscarrosse-Parentis-en-Born-et-Sanguinet"
+    },
+    {
+      "annonce": "2026-07-27",
+      "commune": "Parentis-en-Born",
+      "dept": "Gironde (33)",
+      "lat": 44.3527,
+      "lon": -1.0879,
+      "population": 7586,
+      "statut": "Retour total : les habitants des communes de Sanguinet et de Parentis-en-Born",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/Actualites/Actualites/Retour-des-habitants-dans-les-secteurs-mis-en-securite-de-Biscarrosse-Parentis-en-Born-et-Sanguinet"
+    },
+    {
+      "annonce": "2026-07-27",
+      "commune": "Biscarrosse",
+      "dept": "Gironde (33)",
+      "lat": 44.4077,
+      "lon": -1.1525,
+      "population": null,
+      "statut": "Retour partiel : les habitants du village aéronautique ; les résidents du camping La Rive, situé au nord de Biscarrosse ; Les autres secteurs de Biscarrosse ne sont toujours pas accessibles dont les quartiers de NAVARROSSE, EN CHON, MAYOTTE, GOUBERN, LE BOSQUE, MILLAS, EN BERGOIN, CAILLAOU, EN BELLIARD et EN BONNET.",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/Actualites/Actualites/Retour-des-habitants-dans-les-secteurs-mis-en-securite-de-Biscarrosse-Parentis-en-Born-et-Sanguinet"
+    },
+    {
+      "annonce": "2026-07-26",
+      "commune": "Biscarrosse",
+      "dept": "Gironde (33)",
+      "lat": 44.4077,
+      "lon": -1.1525,
+      "population": null,
+      "statut": "Retour (partiel) des habitants dans les secteurs mis en sécurité de Biscarrosse ; Sont exclus les quartiers CAILLAOU, EN BONNET, et EN BERGOIN.",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41342/335252/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20situation%20au%2026%20juillet%2020h.pdf"
+    },
   ],
 
   "evacuations": [
@@ -552,6 +594,28 @@
     },
 
     {  "_comment": "département des Landes"  },
+    {
+      "annonce": "2026-07-24",
+      "commune": "Biscarrosse",
+      "dept": "Gironde (33)",
+      "lat": 44.4077,
+      "lon": -1.1525,
+      "population": null,
+      "statut": "Évacuation de l'est et du sud de Biscarrosse bourg ; Les campings « Calède », « Les cottages », « le Pison » et « le Pipiou », situés au nord de Parentis-en-Born évacués",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41322/335098/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20point%20de%20situation%20%C3%A0%2000h.pdf"
+    },
+    {
+      "annonce": "2026-07-24",
+      "commune": "Parentis-en-Born",
+      "dept": "Gironde (33)",
+      "lat": 44.3527,
+      "lon": -1.0879,
+      "population": null,
+      "statut": "Évacuation de l'est et du sud de Biscarrosse bourg ; Les campings « Calède », « Les cottages », « le Pison » et « le Pipiou », situés au nord de Parentis-en-Born évacués",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41322/335098/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20point%20de%20situation%20%C3%A0%2000h.pdf"
+    },
 
     {  "_comment": "département du Var"  },
     {
