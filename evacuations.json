@@ -1,11 +1,124 @@
 {
-  "updated": "2026-07-30T19:00:00Z",
+  "updated": "2026-08-01T19:00:00Z",
   "_comment": "Fichier maintenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/evacuations. Coordonnées = centres officiels geo.api.gouv.fr, ou estimée pour des portions de commune ou regroupement de lieux-dits.",
 
   "retours": [
-    {  "_comment": "Retours d'évacuation annoncées officiellement."  },
+    {  "_comment": "Retours d'évacuation annoncés officiellement."  },
 
     {  "_comment": "département de la Gironde"  },
+    {
+      "annonce": "2026-08-01",
+      "commune": "Marcheprime",
+      "dept": "Gironde (33)",
+      "lat": 44.7033,
+      "lon": -0.8557,
+      "population": 5696,
+      "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "annonce": "2026-08-01",
+      "commune": "Arès",
+      "dept": "Gironde (33)",
+      "lat": 44.7997,
+      "lon": -1.0837,
+      "population": 6482,
+      "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "annonce": "2026-08-01",
+      "commune": "Saumos",
+      "dept": "Gironde (33)",
+      "lat": 44.9119,
+      "lon": -1.0029,
+      "population": 550,
+      "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "annonce": "2026-08-01",
+      "commune": "Le Temple",
+      "dept": "Gironde (33)",
+      "lat": 44.8662,
+      "lon": -0.9609,
+      "population": 652,
+      "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "_comment": "info de retour mais pas d'info d'évacuation ???",
+      "annonce": "2026-08-01",
+      "commune": "Audenge (quartiers de Lubec et de La Pointe)",
+      "dept": "Gironde (33)",
+      "lat": 44.7133,
+      "lon": -0.9533,
+      "population": null,
+      "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "annonce": "2026-07-31",
+      "commune": "Andernos-les-bains",
+      "dept": "Gironde (33)",
+      "lat": 44.6135,
+      "lon": -0.233,
+      "population": 12710,
+      "statut": "Réintégration autorisée dans 2 nouvelles communes (Andernos-les-bains et Lanton)",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87917/661471/file/2026-07-31%20Incendie%20Saumos_Retour%20Andernos%20et%20Lanton%20.pdf"
+    },
+    {
+      "annonce": "2026-07-31",
+      "_comment": "info de retour mais pas d'info d'évacuation ???",
+      "commune": "Lanton",
+      "dept": "Gironde (33)",
+      "lat": 44.7719,
+      "lon": -0.9799,
+      "population": 7337,
+      "statut": "Réintégration autorisée dans 2 nouvelles communes (Andernos-les-bains et Lanton)",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87917/661471/file/2026-07-31%20Incendie%20Saumos_Retour%20Andernos%20et%20Lanton%20.pdf"
+    },
+    {
+      "annonce": "2026-07-31",
+      "commune": "Lacanau (campings, résidences de tourismes, villages vacances et parcs de loisirs)y",
+      "dept": "Gironde (33)",
+      "lat": 44.9879,
+      "lon": -1.096,
+      "population": null,
+      "statut": "Réintégration autorisée dans 2 nouvelles communes et pour les campings de Lacanau (Biganos ; Audenge à l’exception des quartiers de Lubec et de La Pointe ; Les résidents des campings, résidences de tourismes, villages vacances et parcs de loisirs situés sur la commune de LACANAU sont également autorisés à être réintégrés).",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87902/661363/file/2026-07-31%20Incendie%20Saumos_Retour%202%20communes%20et%20campings%20Lacanau%20.pdf"
+    },
+    {
+      "annonce": "2026-07-31",
+      "commune": "Biganos",
+      "dept": "Gironde (33)",
+      "lat": 44.6599,
+      "lon": -0.9582,
+      "population": 11431,
+      "statut": "Réintégration autorisée dans 2 nouvelles communes et pour les campings de Lacanau (Biganos ; Audenge à l’exception des quartiers de Lubec et de La Pointe ; Les résidents des campings, résidences de tourismes, villages vacances et parcs de loisirs situés sur la commune de LACANAU sont également autorisés à être réintégrés).",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87902/661363/file/2026-07-31%20Incendie%20Saumos_Retour%202%20communes%20et%20campings%20Lacanau%20.pdf"
+    },
+    {
+      "_comment": "info de retour mais pas d'info d'évacuation ???",
+      "annonce": "2026-07-31",
+      "commune": "Audenge (à l’exception des quartiers de Lubec et de La Pointe)",
+      "dept": "Gironde (33)",
+      "lat": 44.7133,
+      "lon": -0.9533,
+      "population": null,
+      "statut": "Réintégration autorisée dans 2 nouvelles communes et pour les campings de Lacanau (Biganos ; Audenge à l’exception des quartiers de Lubec et de La Pointe ; Les résidents des campings, résidences de tourismes, villages vacances et parcs de loisirs situés sur la commune de LACANAU sont également autorisés à être réintégrés).",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87902/661363/file/2026-07-31%20Incendie%20Saumos_Retour%202%20communes%20et%20campings%20Lacanau%20.pdf"
+    },
     {
       "annonce": "2026-07-30",
       "commune": "Mios",
@@ -95,6 +208,7 @@
       "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
     },
     {
+      "_comment": "info de retour mais pas d'info d'évacuation ???",
       "annonce": "2026-07-30",
       "commune": "Sainte-Hélène",
       "dept": "Gironde (33)",
