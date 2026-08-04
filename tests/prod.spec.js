@@ -249,36 +249,69 @@ test.describe('Front prod', () => {
 
   // Régression : sous Windows, l'économiseur de batterie coupe les animations système,
   // donc prefers-reduced-motion passe à `reduce` sans que le visiteur l'ait demandé.
-  // La carte tombait alors sur la grille de points statiques sans aucun recours.
+  // La carte tombait alors sur un quadrillage de points fixes que les visiteurs
+  // lisaient comme une panne. Le vent s'anime maintenant pour tout le monde ; la
+  // préférence système le rend seulement plus calme.
+  const etat = () => (page) => page.evaluate(() => ({
+    canvas: getComputedStyle(document.getElementById('wind-canvas')).display,
+    anime: typeof windRaf !== 'undefined' && windRaf !== null,
+    particules: typeof windCount !== 'undefined' ? windCount : null,
+    opacite: map.getPaintProperty('wind-dots', 'circle-opacity'),
+    calme: typeof windCalm !== 'undefined' ? windCalm() : null,
+  }));
+
+  test('vent animé à pleine densité sans préférence système', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    await page.waitForTimeout(8000); // laisse charger /api/wind
+
+    const e = await etat()(page);
+    expect(e).toMatchObject({ canvas: 'block', anime: true, calme: false, opacite: 0.01 });
+    expect(e.particules).toBeGreaterThan(200);
+    // aucune invite : rien à expliquer quand le rendu est le rendu nominal
+    await expect(page.locator('#wl-motion')).not.toHaveClass(/\bon\b/);
+  });
+
   test.describe('vent en prefers-reduced-motion', () => {
     test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-    test('points statiques par défaut, mais animation réactivable et mémorisée', async ({ page }) => {
+    test('animé en version atténuée, et points fixes accessibles à la demande', async ({ page }) => {
       await page.goto(BASE, { waitUntil: 'networkidle' });
       await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
-      await page.waitForTimeout(8000); // laisse charger /api/wind
+      await page.waitForTimeout(8000);
 
-      const etat = () => page.evaluate(() => ({
-        canvas: getComputedStyle(document.getElementById('wind-canvas')).display,
-        anime: typeof windRaf !== 'undefined' && windRaf !== null,
-        opacite: map.getPaintProperty('wind-dots', 'circle-opacity'),
-      }));
+      // ça anime quand même — c'est tout l'objet du correctif
+      const calme = await etat()(page);
+      expect(calme).toMatchObject({ canvas: 'block', anime: true, calme: true, opacite: 0.01 });
+      expect(calme.particules).toBeGreaterThan(0);
 
-      // par défaut on respecte la préférence système
-      expect(await etat()).toMatchObject({ canvas: 'none', anime: false, opacite: 0.85 });
+      // Nettement moins dense que le nominal, mais loin de s'effacer : une première
+      // version cumulait les atténuations jusqu'à un calque 11 fois moins visible,
+      // ce qui trompait autant que le quadrillage figé. On borne des deux côtés.
+      const pleine = await page.evaluate(() => {
+        const w = windCanvas.width, h = windCanvas.height;
+        return Math.min(1200, Math.round(w * h / 1500 / windDpr / windDpr));
+      });
+      expect(calme.particules).toBeLessThan(pleine * 0.75);
+      expect(calme.particules).toBeGreaterThan(pleine * 0.4);
 
-      // ...et la légende propose explicitement de réactiver
+      // la sortie de secours vers zéro mouvement reste offerte
       const btn = page.locator('#wl-motion-btn');
       await expect(page.locator('#wl-motion')).toHaveClass(/\bon\b/);
-      await expect(btn).toBeVisible();
+      await expect(btn).toHaveText(/points fixes/i);
       await btn.click();
       await page.waitForTimeout(2000);
-      expect(await etat()).toMatchObject({ canvas: 'block', anime: true, opacite: 0.01 });
+      expect(await etat()(page)).toMatchObject({ canvas: 'none', anime: false, opacite: 0.85 });
 
-      // le choix survit au rechargement
+      // et ce choix-là est mémorisé
       await page.reload({ waitUntil: 'networkidle' });
       await page.waitForTimeout(8000);
-      expect(await etat()).toMatchObject({ canvas: 'block', anime: true });
+      expect(await etat()(page)).toMatchObject({ canvas: 'none', anime: false, opacite: 0.85 });
+
+      // retour à l'animation
+      await btn.click();
+      await page.waitForTimeout(2000);
+      expect(await etat()(page)).toMatchObject({ canvas: 'block', anime: true, calme: true });
     });
   });
 });
