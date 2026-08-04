@@ -1,7 +1,28 @@
 {
-  "_comment": "Évacuations annoncées officiellement (préfectures, relayées par la presse). Fichier tenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/evacuations. Coordonnées = centres officiels geo.api.gouv.fr.",
-  "updated": "2026-07-26T14:30:00Z",
+  "_comment": "Évacuations et retours annoncés officiellement (préfectures, relayées par la presse). Fichier tenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/situation. Coordonnées = centres officiels geo.api.gouv.fr. Un JSON invalide est avalé silencieusement par le serveur et vide le panneau : valider avant de commiter (voir CONTRIBUTING.md). « retours » n'est pas encore affiché par le front.",
+  "updated": "2026-08-02T00:00:00Z",
   "evacuations": [
+    {
+      "commune": "Lacanau", "dept": "Gironde (33)", "lat": 44.9879, "lon": -1.096,
+      "population": 5739, "statut": "Évacuations des campings, des résidences de tourisme, des villages vacances et des parcs de loisirs sur les secteurs Lacanau Océan et les deux rives de Lacanau",
+      "annonce": "2026-07-28",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87797/660621/file/CP%20-%20FR%20Alert%20%C3%89vacuations%20des%20campings.pdf"
+    },
+    {
+      "commune": "autoroute A63", "dept": "Gironde (33)", "lat": 44.5796, "lon": -0.8354,
+      "population": null, "statut": "Sens sud-nord : fermeture entre l'échangeur 17 de Liposthey jusqu'à l'échangeur 24 situé à Cestas",
+      "annonce": "2026-07-26",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/Actualites/Communiques-de-presse/Communiques-de-presse-2026/Juillet-2026/Incendie-de-Gironde-point-de-situation-a-2h-ce-dimanche-26-juillet"
+    },
+    {
+      "commune": "autoroute A63", "dept": "Gironde (33)", "lat": 44.7333, "lon": -0.7226,
+      "population": null, "statut": "Sens nord-sud : fermeture entre la rocade et l'échangeur 23, situé à Marcheprime",
+      "annonce": "2026-07-26",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/Actualites/Communiques-de-presse/Communiques-de-presse-2026/Juillet-2026/Incendie-de-Gironde-point-de-situation-a-2h-ce-dimanche-26-juillet"
+    },
     {
       "commune": "Marcheprime", "dept": "Gironde (33)", "lat": 44.7033, "lon": -0.8557,
       "population": 5696, "statut": "évacuation totale",
@@ -73,11 +94,321 @@
       "source_url": "https://www.lemonde.fr/planete/video/2026/07/25/video-sept-communes-de-la-gironde-evacuees-de-maniere-preventive-a-cause-des-feux-faisant-rage-dans-la-region_6732168_3244.html"
     },
     {
+      "commune": "Mérignac", "dept": "Gironde (33)", "lat": 44.8313, "lon": -0.682,
+      "population": null, "statut": "Évacuation des communes du Haillan, Eysines (extra rocade) et Mérignac (extra rocade)",
+      "annonce": "2026-07-25",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87690/659932/file/2025-07-25-Evacuation%20Le%20Haillan%20Eysines%20extra%20rocade%20et%20M%C3%A9rignac%20extra%20rocade.pdf"
+    },
+    {
+      "commune": "Eysines", "dept": "Gironde (33)", "lat": 44.8779, "lon": -0.646,
+      "population": null, "statut": "Évacuation des communes du Haillan, Eysines (extra rocade) et Mérignac (extra rocade)",
+      "annonce": "2026-07-25",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87690/659932/file/2025-07-25-Evacuation%20Le%20Haillan%20Eysines%20extra%20rocade%20et%20M%C3%A9rignac%20extra%20rocade.pdf"
+    },
+    {
+      "commune": "Saumos", "dept": "Gironde (33)", "lat": 44.9119, "lon": -1.0029,
+      "population": 550, "statut": "Évacuations préventives sur les communes d'Arès, Andernos, Le Temple et Saumos.",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87681/659854/file/2026-07-24-Point%20de%20situation%20%C3%A0%2014h00.pdf"
+    },
+    {
+      "commune": "Le Temple", "dept": "Gironde (33)", "lat": 44.8662, "lon": -0.9609,
+      "population": 652, "statut": "Évacuations préventives sur les communes d'Arès, Andernos, Le Temple et Saumos.",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87681/659854/file/2026-07-24-Point%20de%20situation%20%C3%A0%2014h00.pdf"
+    },
+    {
+      "commune": "Andernos", "dept": "Gironde (33)", "lat": 44.6135, "lon": -0.233,
+      "population": 12710, "statut": "Évacuations préventives sur les communes d'Arès, Andernos, Le Temple et Saumos.",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87681/659854/file/2026-07-24-Point%20de%20situation%20%C3%A0%2014h00.pdf"
+    },
+    {
+      "commune": "Arès", "dept": "Gironde (33)", "lat": 44.7997, "lon": -1.0837,
+      "population": 6482, "statut": "Évacuations préventives sur les communes d'Arès, Andernos, Le Temple et Saumos.",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87681/659854/file/2026-07-24-Point%20de%20situation%20%C3%A0%2014h00.pdf"
+    },
+    {
+      "commune": "Le Porge", "dept": "Gironde (33)", "lat": 44.8649, "lon": -1.1351,
+      "population": 3465, "statut": "Évacuation de la commune du Porge",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87665/659744/file/2026-07-24-Point%20de%20situation%20%C3%A0%207h30.pdf"
+    },
+    {
+      "commune": "Lège-Cap-Ferret", "dept": "Gironde (33)", "lat": 44.7452, "lon": -1.174,
+      "population": 7909, "statut": "Évacuation du bourg de la commune de Lège",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87665/659744/file/2026-07-24-Point%20de%20situation%20%C3%A0%207h30.pdf"
+    },
+    {
+      "commune": "Cap-Ferret (presqu’île)", "dept": "Gironde (33)", "lat": 44.795, "lon": -1.1472,
+      "population": null, "statut": "Évacuation de l’ensemble de la presqu'île, village après village, de Claouey jusqu’à la pointe du Cap-Ferret",
+      "annonce": "2026-07-24",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87665/659744/file/2026-07-24-Point%20de%20situation%20%C3%A0%207h30.pdf"
+    },
+    {
+      "commune": "Cap-Ferret (presqu’île nord)", "dept": "Gironde (33)", "lat": 44.73, "lon": -1.2,
+      "population": null, "statut": "Évacuation des villages de Le Four, Les Jacquets, Petit Piquey, Grand Piquey (Cap-Ferret nord)",
+      "annonce": "2026-07-23",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87656/659655/file/2026-07-23%20incendie%20point%20de%20situation%20%C3%A0%2021h30.pdf"
+    },
+    {
+      "commune": "EHPAD Les Tchanqués (Lège)", "dept": "Gironde (33)", "lat": 44.7951, "lon": -1.1468,
+      "population": null, "statut": "Évacuation des résidents de l’EHPAD Les Tchanqués (Lège)",
+      "annonce": "2026-07-23",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87656/659655/file/2026-07-23%20incendie%20point%20de%20situation%20%C3%A0%2021h30.pdf"
+    },
+    {
+      "commune": "Claouey", "dept": "Gironde (33)", "lat": 44.7467, "lon": -1.175,
+      "population": null, "statut": "Évacuation du village de Claouey, dont les campings : Les Pastourelles, Les Embruns, VVF",
+      "annonce": "2026-07-23",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87639/659505/file/2026-07-23-Incendie%20point%20de%20situation%20%C3%A0%2011h30.pdf"
+    },
+    {
+      "commune": "Le Porge", "dept": "Gironde (33)", "lat": 44.8649, "lon": -1.1351,
+      "population": null, "statut": "Évacuation partielle, dont les camping : la Grigne, la Jenny",
+      "annonce": "2026-07-23",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87629/659411/file/2026-07-23-Incendie%20point%20de%20situation%20%C3%A0%207h00.pdf"
+    },
+    {
+      "commune": "Lège-Cap-Ferret", "dept": "Gironde (33)", "lat": 44.7951, "lon": -1.1468,
+      "population": null, "statut": "Évacuation partielle dont les campings : le Truc vert, la Prairie, la Pinède, le Camping aux couleurs du Ferret, le Grand Crohot, Brémontier",
+      "annonce": "2026-07-23",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87629/659411/file/2026-07-23-Incendie%20point%20de%20situation%20%C3%A0%207h00.pdf"
+    },
+    {
+      "commune": "Le Porge", "dept": "Gironde (33)", "lat": 44.8649, "lon": -1.1351,
+      "population": null, "statut": "Évacuation partielle du Porge (Le Porge nord-est, le camping de La Grigne, la plage du Gressier, quartier de Lauros)",
+      "annonce": "2026-07-22",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87627/659390/file/2026-07-22%20Incendie%20Saumos%20point%20de%20situation%2021h00.pdf"
+    },
+    {
+      "commune": "Biscarrosse", "dept": "Landes (40)", "lat": 44.4077, "lon": -1.1525,
+      "population": null, "statut": "Évacuation de l'est et du sud de Biscarrosse bourg ; Les campings « Calède », « Les cottages », « le Pison » et « le Pipiou », situés au nord de Parentis-en-Born évacués",
+      "annonce": "2026-07-24",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41322/335098/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20point%20de%20situation%20%C3%A0%2000h.pdf"
+    },
+    {
+      "commune": "Parentis-en-Born", "dept": "Landes (40)", "lat": 44.3527, "lon": -1.0879,
+      "population": null, "statut": "Évacuation de l'est et du sud de Biscarrosse bourg ; Les campings « Calède », « Les cottages », « le Pison » et « le Pipiou », situés au nord de Parentis-en-Born évacués",
+      "annonce": "2026-07-24",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41322/335098/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20point%20de%20situation%20%C3%A0%2000h.pdf"
+    },
+    {
       "commune": "Secteur de Pontevès", "dept": "Var (83)", "lat": 43.5509, "lon": 6.0687,
       "population": null, "statut": "2 000 personnes évacuées, non réintégrées",
       "annonce": "2026-07-25 (soir)",
       "source": "Préfecture du Var via La Dépêche",
       "source_url": "https://www.ladepeche.fr/2026/07/25/direct-incendies-les-feux-toujours-hors-de-controle-des-evacuations-dans-la-metropole-de-bordeaux-larmee-en-renfort-des-pompiers-13482939.php"
+    }
+  ],
+  "retours": [
+    {
+      "commune": "Marcheprime", "dept": "Gironde (33)", "lat": 44.7033, "lon": -0.8557,
+      "population": 5696, "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "annonce": "2026-08-01",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "commune": "Arès", "dept": "Gironde (33)", "lat": 44.7997, "lon": -1.0837,
+      "population": 6482, "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "annonce": "2026-08-01",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "commune": "Saumos", "dept": "Gironde (33)", "lat": 44.9119, "lon": -1.0029,
+      "population": 550, "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "annonce": "2026-08-01",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "commune": "Le Temple", "dept": "Gironde (33)", "lat": 44.8662, "lon": -0.9609,
+      "population": 652, "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "annonce": "2026-08-01",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "commune": "Audenge (quartiers de Lubec et de La Pointe)", "dept": "Gironde (33)", "lat": 44.7133, "lon": -0.9533,
+      "population": null, "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
+      "annonce": "2026-08-01",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87942/661629/file/2026-08-01%20R%C3%A9int%C3%A9gration%20de%204%20nouvelles%20communes.pdf"
+    },
+    {
+      "commune": "Andernos-les-bains", "dept": "Gironde (33)", "lat": 44.6135, "lon": -0.233,
+      "population": 12710, "statut": "Réintégration autorisée dans 2 nouvelles communes (Andernos-les-bains et Lanton)",
+      "annonce": "2026-07-31",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87917/661471/file/2026-07-31%20Incendie%20Saumos_Retour%20Andernos%20et%20Lanton%20.pdf"
+    },
+    {
+      "commune": "Lanton", "dept": "Gironde (33)", "lat": 44.7719, "lon": -0.9799,
+      "population": 7337, "statut": "Réintégration autorisée dans 2 nouvelles communes (Andernos-les-bains et Lanton)",
+      "annonce": "2026-07-31",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87917/661471/file/2026-07-31%20Incendie%20Saumos_Retour%20Andernos%20et%20Lanton%20.pdf"
+    },
+    {
+      "commune": "Lacanau (campings, résidences de tourismes, villages vacances et parcs de loisirs)", "dept": "Gironde (33)", "lat": 44.9879, "lon": -1.096,
+      "population": null, "statut": "Réintégration autorisée dans 2 nouvelles communes et pour les campings de Lacanau (Biganos ; Audenge à l’exception des quartiers de Lubec et de La Pointe ; Les résidents des campings, résidences de tourismes, villages vacances et parcs de loisirs situés sur la commune de LACANAU sont également autorisés à être réintégrés).",
+      "annonce": "2026-07-31",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87902/661363/file/2026-07-31%20Incendie%20Saumos_Retour%202%20communes%20et%20campings%20Lacanau%20.pdf"
+    },
+    {
+      "commune": "Biganos", "dept": "Gironde (33)", "lat": 44.6599, "lon": -0.9582,
+      "population": 11431, "statut": "Réintégration autorisée dans 2 nouvelles communes et pour les campings de Lacanau (Biganos ; Audenge à l’exception des quartiers de Lubec et de La Pointe ; Les résidents des campings, résidences de tourismes, villages vacances et parcs de loisirs situés sur la commune de LACANAU sont également autorisés à être réintégrés).",
+      "annonce": "2026-07-31",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87902/661363/file/2026-07-31%20Incendie%20Saumos_Retour%202%20communes%20et%20campings%20Lacanau%20.pdf"
+    },
+    {
+      "commune": "Audenge (à l’exception des quartiers de Lubec et de La Pointe)", "dept": "Gironde (33)", "lat": 44.7133, "lon": -0.9533,
+      "population": null, "statut": "Réintégration autorisée dans 2 nouvelles communes et pour les campings de Lacanau (Biganos ; Audenge à l’exception des quartiers de Lubec et de La Pointe ; Les résidents des campings, résidences de tourismes, villages vacances et parcs de loisirs situés sur la commune de LACANAU sont également autorisés à être réintégrés).",
+      "annonce": "2026-07-31",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87902/661363/file/2026-07-31%20Incendie%20Saumos_Retour%202%20communes%20et%20campings%20Lacanau%20.pdf"
+    },
+    {
+      "commune": "Mios", "dept": "Gironde (33)", "lat": 44.6105, "lon": -0.8913,
+      "population": 12043, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Le Barp", "dept": "Gironde (33)", "lat": 44.6297, "lon": -0.7437,
+      "population": 5806, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Cestas", "dept": "Gironde (33)", "lat": 44.7274, "lon": -0.7349,
+      "population": 16666, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Saint-Jean-d'Illac", "dept": "Gironde (33)", "lat": 44.7973, "lon": -0.8156,
+      "population": 9616, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Martignas-sur-Jalle", "dept": "Gironde (33)", "lat": 44.8451, "lon": -0.8006,
+      "population": 8056, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Saint-Médard-en-Jalles", "dept": "Gironde (33)", "lat": 44.8861, "lon": -0.7823,
+      "population": 32910, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Saint-Aubin-de-Médoc", "dept": "Gironde (33)", "lat": 44.9343, "lon": -0.7478,
+      "population": 7769, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Salaunes", "dept": "Gironde (33)", "lat": 44.9281, "lon": -0.8502,
+      "population": 1260, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Sainte-Hélène", "dept": "Gironde (33)", "lat": 44.9653, "lon": -0.9071,
+      "population": 3091, "statut": "Réintégration immédiate autorisée dans 9 communes",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "autoroute A63", "dept": "Gironde (33)", "lat": 44.6191, "lon": -0.8503,
+      "population": null, "statut": "réouverture de l’autoroute A63 à partir de 14 heures",
+      "annonce": "2026-07-30",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87853/661042/file/2026-07-30%20Incendie%20Saumos_Retour%20communes.pdf"
+    },
+    {
+      "commune": "Eysines", "dept": "Gironde (33)", "lat": 44.8779, "lon": -0.646,
+      "population": null, "statut": "Retours : Les habitants d’Eysines, Mérignac, Le Haillan autorisés à rentrer chez eux",
+      "annonce": "2026-07-28",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87814/660783/file/2026-07-28%20Retours%20Le%20Haillan,%20M%C3%A9rignac%20et%20Eysines.pdf"
+    },
+    {
+      "commune": "Mérignac", "dept": "Gironde (33)", "lat": 44.8313, "lon": -0.682,
+      "population": null, "statut": "Retours : Les habitants d’Eysines, Mérignac, Le Haillan autorisés à rentrer chez eux",
+      "annonce": "2026-07-28",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87814/660783/file/2026-07-28%20Retours%20Le%20Haillan,%20M%C3%A9rignac%20et%20Eysines.pdf"
+    },
+    {
+      "commune": "Le Haillan", "dept": "Gironde (33)", "lat": 44.8713, "lon": -0.6903,
+      "population": 11392, "statut": "Retours : Les habitants d’Eysines, Mérignac, Le Haillan autorisés à rentrer chez eux",
+      "annonce": "2026-07-28",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87814/660783/file/2026-07-28%20Retours%20Le%20Haillan,%20M%C3%A9rignac%20et%20Eysines.pdf"
+    },
+    {
+      "commune": "Sanguinet", "dept": "Landes (40)", "lat": 44.4776, "lon": -1.0903,
+      "population": 4741, "statut": "Retour total : les habitants des communes de Sanguinet et de Parentis-en-Born",
+      "annonce": "2026-07-27",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/Actualites/Actualites/Retour-des-habitants-dans-les-secteurs-mis-en-securite-de-Biscarrosse-Parentis-en-Born-et-Sanguinet"
+    },
+    {
+      "commune": "Parentis-en-Born", "dept": "Landes (40)", "lat": 44.3527, "lon": -1.0879,
+      "population": 7586, "statut": "Retour total : les habitants des communes de Sanguinet et de Parentis-en-Born",
+      "annonce": "2026-07-27",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/Actualites/Actualites/Retour-des-habitants-dans-les-secteurs-mis-en-securite-de-Biscarrosse-Parentis-en-Born-et-Sanguinet"
+    },
+    {
+      "commune": "Biscarrosse", "dept": "Landes (40)", "lat": 44.4077, "lon": -1.1525,
+      "population": null, "statut": "Retour partiel : les habitants du village aéronautique ; les résidents du camping La Rive, situé au nord de Biscarrosse ; Les autres secteurs de Biscarrosse ne sont toujours pas accessibles dont les quartiers de NAVARROSSE, EN CHON, MAYOTTE, GOUBERN, LE BOSQUE, MILLAS, EN BERGOIN, CAILLAOU, EN BELLIARD et EN BONNET.",
+      "annonce": "2026-07-27",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/Actualites/Actualites/Retour-des-habitants-dans-les-secteurs-mis-en-securite-de-Biscarrosse-Parentis-en-Born-et-Sanguinet"
+    },
+    {
+      "commune": "Biscarrosse", "dept": "Landes (40)", "lat": 44.4077, "lon": -1.1525,
+      "population": null, "statut": "Retour (partiel) des habitants dans les secteurs mis en sécurité de Biscarrosse ; Sont exclus les quartiers CAILLAOU, EN BONNET, et EN BERGOIN.",
+      "annonce": "2026-07-26",
+      "source": "Préfecture des Landes",
+      "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41342/335252/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20situation%20au%2026%20juillet%2020h.pdf"
     }
   ]
 }
