@@ -128,6 +128,20 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
 }
 .wl-state b{color:var(--txt);font-weight:600}
 .wl-state.fut b{color:var(--ember)}
+/* note « animation coupée par le système » + bouton de réactivation ;
+   affichée seulement quand prefers-reduced-motion est actif */
+#wl-motion{display:none;margin-top:7px}
+#wl-motion.on{display:block}
+#wl-motion .wl-m-txt{
+  font-family:var(--sans);font-size:10px;line-height:1.35;color:var(--faint);
+}
+#wl-motion button{
+  margin-top:5px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;
+  background:transparent;color:var(--dim);cursor:pointer;
+  font-family:var(--cond);font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+}
+#wl-motion button:hover{color:var(--txt);border-color:var(--dim)}
+#wl-motion button:focus-visible{outline:2px solid var(--fire);outline-offset:2px}
 /* légende moyens aériens (visible seulement quand la couche avions est ON) */
 #hud-avions{display:none}
 #hud-avions.on{display:block}
@@ -453,6 +467,10 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
   .live::before{animation:none}
   .flame{animation:none}
   #wind-canvas{display:none}   /* particules remplacées par les points de grille statiques (couche circle) */
+  /* …sauf si l'utilisateur a explicitement redemandé l'animation depuis la légende
+     vent (cas fréquent : Windows coupe les animations en économiseur de batterie,
+     donc `reduce` est actif sans que personne ne l'ait choisi). */
+  html.wind-motion #wind-canvas{display:block}
 }
 </style>
 
@@ -566,6 +584,10 @@ posthog.init('phc_mL9DG2ssoXyGhVoVmtGFxEh2jqMVn5pepeqXfQcCvAxc', {
       <div class="wl-bar"></div>
       <div class="wl-ticks"><span>0</span><span>20</span><span>40</span><span>60</span></div>
       <div class="wl-state" id="wl-state">vent actuel</div>
+      <div id="wl-motion">
+        <div class="wl-m-txt"></div>
+        <button type="button" id="wl-motion-btn"></button>
+      </div>
     </div>
     <div class="hud-card" id="hud-avions"><!-- rempli par updateAvionLegend() --></div>
     <div class="hud-card">
@@ -1095,11 +1117,11 @@ function installLayers(){
   if (!map.getLayer('wind-dots')){
     map.addLayer({id:'wind-dots', type:'circle', source:'wind',
       paint:{
-        'circle-radius': reducedMotion() ? 4.5 : 12,
+        'circle-radius': windReduced() ? 4.5 : 12,
         'circle-color':['interpolate',['linear'],['get','spd'],
           0, windRamp0(), 20,'#ffc93c', 40,'#ff8c1a', 60,'#ff4820'],
-        'circle-opacity': reducedMotion() ? 0.85 : 0.01,
-        'circle-stroke-width': reducedMotion() ? 0.6 : 0,
+        'circle-opacity': windReduced() ? 0.85 : 0.01,
+        'circle-stroke-width': windReduced() ? 0.6 : 0,
         'circle-stroke-color':'rgba(0,0,0,.4)',
       },
       layout:{'visibility':'none'}});
@@ -2272,6 +2294,37 @@ async function loadWindIfNeeded(){
 function reducedMotion(){
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
+/* Override explicite des particules de vent.
+   `prefers-reduced-motion: reduce` se déclenche bien au-delà du choix d'accessibilité :
+   sous Windows, désactiver « Afficher les animations » — ce que fait automatiquement
+   l'économiseur de batterie — le met à `reduce`. Résultat : des visiteurs qui n'ont rien
+   demandé voyaient la grille de points statiques à la place du vent animé.
+   On respecte donc toujours la préférence par défaut, mais la légende vent propose
+   de réactiver l'animation ; le choix est mémorisé.
+   Volontairement limité au vent : les pulsations de foyer (ringRunning) et les
+   animations CSS restent coupées en reduced-motion. */
+let windForceMotion = false;
+try{ windForceMotion = localStorage.getItem('ff-wind-motion') === '1'; }catch(e){}
+document.documentElement.classList.toggle('wind-motion', windForceMotion);
+function windReduced(){ return reducedMotion() && !windForceMotion; }
+function setWindMotion(on){
+  windForceMotion = !!on;
+  try{ localStorage.setItem('ff-wind-motion', windForceMotion ? '1' : '0'); }catch(e){}
+  document.documentElement.classList.toggle('wind-motion', windForceMotion);
+  applyWindDotsStyle();
+  updateWindLegend();
+  updateWindEngine();
+}
+/* Les points de grille changent de rôle selon le mode : zone de clic quasi invisible
+   quand les particules tournent, points colorés lisibles quand elles sont coupées.
+   Appelé à la création de la couche ET à chaque bascule (le paint n'est pas réévalué seul). */
+function applyWindDotsStyle(){
+  if (!map || !map.getLayer || !map.getLayer('wind-dots')) return;
+  const r = windReduced();
+  map.setPaintProperty('wind-dots','circle-radius', r ? 4.5 : 12);
+  map.setPaintProperty('wind-dots','circle-opacity', r ? 0.85 : 0.01);
+  map.setPaintProperty('wind-dots','circle-stroke-width', r ? 0.6 : 0);
+}
 /* Rampe de couleur par vitesse (km/h), identique aux anciennes flèches.
    Thème clair : départ plus sombre pour rester lisible sur fond clair. */
 function windRamp0(){ return theme === 'light' ? '#5b6670' : '#9aa4ad'; }
@@ -2400,7 +2453,25 @@ function updateWindLegend(){
     st.className = 'wl-state';
     st.innerHTML = 'vent <b>actuel</b>' + (t ? ' · Open-Meteo ' + esc(t) : '');
   }
+  updateWindMotionNote();
 }
+/* Explique pourquoi les particules sont remplacées par des points, et propose la bascule.
+   N'apparaît que si le système demande de réduire les animations. */
+function updateWindMotionNote(){
+  const box = document.getElementById('wl-motion');
+  if (!box) return;
+  const show = layers.wind && reducedMotion();
+  box.classList.toggle('on', show);
+  if (!show) return;
+  box.querySelector('.wl-m-txt').textContent = windForceMotion
+    ? 'Animation forcée malgré le réglage « réduire les animations » de votre système.'
+    : 'Votre système demande de réduire les animations (accessibilité ou économiseur de batterie) : les particules sont remplacées par les points de grille.';
+  const btn = box.querySelector('#wl-motion-btn');
+  btn.textContent = windForceMotion ? 'Revenir aux points' : "Activer l'animation";
+  btn.setAttribute('aria-pressed', windForceMotion ? 'true' : 'false');
+}
+document.getElementById('wl-motion-btn')
+  .addEventListener('click', () => setWindMotion(!windForceMotion));
 
 /* --- moteur d'animation (rAF) --- */
 let windParticles = null, windRaf = null, windCount = 0;
@@ -2423,7 +2494,7 @@ function spawnParticle(){
   };
 }
 function windRunning(){
-  return layers.wind && windField && !reducedMotion() &&
+  return layers.wind && windField && !windReduced() &&
          document.visibilityState === 'visible';
 }
 function updateWindEngine(){

@@ -246,4 +246,39 @@ test.describe('Front prod', () => {
     await expect(btn).toHaveAttribute('href', /github\.com\/.+\/carte-incendies/);
     await expect(btn).toHaveAttribute('target', '_blank');
   });
+
+  // Régression : sous Windows, l'économiseur de batterie coupe les animations système,
+  // donc prefers-reduced-motion passe à `reduce` sans que le visiteur l'ait demandé.
+  // La carte tombait alors sur la grille de points statiques sans aucun recours.
+  test.describe('vent en prefers-reduced-motion', () => {
+    test.use({ contextOptions: { reducedMotion: 'reduce' } });
+
+    test('points statiques par défaut, mais animation réactivable et mémorisée', async ({ page }) => {
+      await page.goto(BASE, { waitUntil: 'networkidle' });
+      await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+      await page.waitForTimeout(8000); // laisse charger /api/wind
+
+      const etat = () => page.evaluate(() => ({
+        canvas: getComputedStyle(document.getElementById('wind-canvas')).display,
+        anime: typeof windRaf !== 'undefined' && windRaf !== null,
+        opacite: map.getPaintProperty('wind-dots', 'circle-opacity'),
+      }));
+
+      // par défaut on respecte la préférence système
+      expect(await etat()).toMatchObject({ canvas: 'none', anime: false, opacite: 0.85 });
+
+      // ...et la légende propose explicitement de réactiver
+      const btn = page.locator('#wl-motion-btn');
+      await expect(page.locator('#wl-motion')).toHaveClass(/\bon\b/);
+      await expect(btn).toBeVisible();
+      await btn.click();
+      await page.waitForTimeout(2000);
+      expect(await etat()).toMatchObject({ canvas: 'block', anime: true, opacite: 0.01 });
+
+      // le choix survit au rechargement
+      await page.reload({ waitUntil: 'networkidle' });
+      await page.waitForTimeout(8000);
+      expect(await etat()).toMatchObject({ canvas: 'block', anime: true });
+    });
+  });
 });
