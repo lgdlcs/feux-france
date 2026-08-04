@@ -1237,6 +1237,8 @@ function bindInteractions(){
   map.on('mouseleave','burned-fill', () => { map.getCanvas().style.cursor = ''; });
   map.on('click','burned-fill', e => {
     const p = e.features[0].properties;
+    /* source_url / source_label sont identiques pour toutes les entités : ils
+       sont portés par la collection et non répétés sur chacune des ~4 000. */
     new mapboxgl.Popup({offset:8, maxWidth:'320px'})
       .setLngLat(e.lngLat)
       .setHTML(`
@@ -1246,7 +1248,7 @@ function bindInteractions(){
           ${p.area_ha ? '<k>Surface cartographiée</k>' + fmtInt.format(p.area_ha) + ' ha<br>' : ''}
           ${p.date ? '<k>Date du feu</k>' + esc(p.date) + '<br>' : ''}
           ${p.updated ? '<k>Mise à jour</k>' + esc(p.updated) + '<br>' : ''}
-          ${p.source_url ? '<a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">Source ' + esc(p.source_label || 'Copernicus') + ' \u2192</a><br>' : ''}
+          ${burnedSourceLink(p.kind, p)}
           <span style="color:var(--faint);font-size:11px">${p.kind === 'nrt'
             ? 'Contour NRT : plus frais que la version datée, mais EFFIS n\'expose ni date ni surface sur cette couche.'
             : 'Délinéation officielle' + (p.date ? ' du feu du ' + esc(p.date) : '') + '. EFFIS ne cartographie que les feux \u2273 30 ha, avec quelques jours de latence.'}</span>
@@ -2545,6 +2547,17 @@ function windFrame(){
     p.lng = nlon; p.lat = nlat; p.age++;
   }
   windRaf = requestAnimationFrame(windFrame);
+}
+
+function burnedSourceLink(kind, props){
+  // props : repli pour un fichier généré avant la factorisation (jusqu'à la
+  // prochaine régénération EFFIS, le fichier en place porte encore la source
+  // sur chaque entité).
+  const url = (burnedData && burnedData.source_url) || (props && props.source_url);
+  if (!url) return '';
+  const lab = (burnedData && burnedData.source_label && burnedData.source_label[kind])
+    || (props && props.source_label) || 'Copernicus';
+  return '<a href="' + esc(url) + '" target="_blank" rel="noopener">Source ' + esc(lab) + ' →</a><br>';
 }
 
 /* Zones brûlées : fichier lourd (~3,3 Mo) chargé au 1er activation du toggle. */
