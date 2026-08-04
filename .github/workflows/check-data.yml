@@ -1,0 +1,27 @@
+# Le serveur lit les fichiers de données derrière un `except` silencieux : un JSON
+# cassé ne remonte aucune erreur, il vide le panneau en production. La vérification
+# doit donc arriver ici, sur la PR, pas après le déploiement.
+name: Données
+
+on:
+  pull_request:
+    paths:
+      - 'evacuations.json'
+      - 'situation.json'
+      - 'scripts/check_data.py'
+  push:
+    branches: [main]
+    paths:
+      - 'evacuations.json'
+      - 'situation.json'
+      - 'scripts/check_data.py'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 scripts/check_data.py
