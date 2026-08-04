@@ -1,6 +1,6 @@
 {
   "_comment": "Évacuations et retours annoncés officiellement (préfectures, relayées par la presse). Fichier tenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/situation. Coordonnées = centres officiels geo.api.gouv.fr. Un JSON invalide est avalé silencieusement par le serveur et vide le panneau : valider avant de commiter (voir CONTRIBUTING.md). « retours » n'est pas encore affiché par le front.",
-  "updated": "2026-08-02T00:00:00Z",
+  "updated": "2026-08-03T00:00:00Z",
   "evacuations": [
     {
       "commune": "Lacanau", "dept": "Gironde (33)", "lat": 44.9879, "lon": -1.096,
@@ -409,6 +409,171 @@
       "annonce": "2026-07-26",
       "source": "Préfecture des Landes",
       "source_url": "https://www.landes.gouv.fr/contenu/telechargement/41342/335252/file/CP%20-%20Incendie%20%C3%A0%20Biscarrosse%20-%20situation%20au%2026%20juillet%2020h.pdf"
+    },
+    {
+      "annonce": "2026-08-02",
+      "commune": "Correns",
+      "dept": "Var (83)",
+      "lat": 43.4884,
+      "lon": 6.0543,
+      "population": 886,
+      "statut": "Les mesures d’évacuation préventive sont désormais levées. Les habitants concernés peuvent regagner leur domicile.\nLa mesure de confinement applicable au cœur de village est également levée.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47866/310527/file/2026-08-02%20CP%20Feu%20Gros%20Bessillon%20Reprise%20Correns%20-%20Point%20de%20situation%2045.pdf"
+    },
+    {
+      "annonce": "2026-08-02",
+      "commune": "Correns",
+      "dept": "Var (83)",
+      "lat": 43.4884,
+      "lon": 6.0543,
+      "population": 886,
+      "statut": "Les habitants du cœur de village de Correns, la mesure de confinement qui les concernait est levée ;",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47864/310517/file/2026-08-02%20CP%20Feu%20Gros%20Bessillon%20Reprise%20Correns%20-%20Point%20de%20situation%2043-2.pdf"
+    },
+    {
+      "annonce": "2026-08-02",
+      "commune": "Le Val",
+      "dept": "Var (83)",
+      "lat": 43.4468,
+      "lon": 6.0569,
+      "population": 4335,
+      "statut": "La consigne d’évacuation est levée pour les quartiers nord de la commune du Val ;",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47864/310517/file/2026-08-02%20CP%20Feu%20Gros%20Bessillon%20Reprise%20Correns%20-%20Point%20de%20situation%2043-2.pdf"
+    },
+    {
+      "annonce": "2026-08-01",
+      "commune": "Châteauvert",
+      "dept": "Var (83)",
+      "lat": 43.4992,
+      "lon": 6.0088,
+      "population": 141,
+      "statut": "Les habitants sont désormais autorisés à regagner leur domicile.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47860/310497/file/2026-07-31%20CP%20Feu%20Gros%20Bessillon%20Reprise%20Correns%20-%20Point%20de%20situation%2039.pdf"
+    },
+    {
+      "annonce": "2026-07-30",
+      "commune": "Brignoles",
+      "dept": "Var (83)",
+      "lat": 43.3878,
+      "lon": 6.0759,
+      "population": 17850,
+      "statut": "La consigne d’évacuation est levée les quartiers Les Jausserannes et Pélicon.\nTous les habitants peuvent regagner leur domicile.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47830/310322/file/2026-07-30%20CP%20Feu%20Brignoles%20point%204.pdf"
+    },
+    {
+      "annonce": "2026-07-30",
+      "commune": "Brignoles",
+      "dept": "Var (83)",
+      "lat": 43.3878,
+      "lon": 6.0759,
+      "population": 17850,
+      "statut": "Réintégration des quartiers : Sainte-Barbe, les Agasses et les Petits Ubacs",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47822/310289/file/2026-07-30%20CP%20Feu%20Brignoles%20point%203.pdf"
+    },
+    {
+      "annonce": "2026-07-29",
+      "commune": "Barjols",
+      "dept": "Var (83)",
+      "lat": 43.5484,
+      "lon": 5.973,
+      "population": 2984,
+      "statut": "Toutes les personnes évacuées sur le secteur de Correns et de Barjols sont autorisées à réintéger leur domicile.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47804/310151/file/2026-07-29%20CP%20Feu%20PONTEVES%20point%2031%20-%2010h30%20.pdf"
+    },
+    {
+      "annonce": "2026-07-29",
+      "commune": "Correns",
+      "dept": "Var (83)",
+      "lat": 43.4884,
+      "lon": 6.0543,
+      "population": 886,
+      "statut": "Toutes les personnes évacuées sur le secteur de Correns et de Barjols sont autorisées à réintéger leur domicile.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47804/310151/file/2026-07-29%20CP%20Feu%20PONTEVES%20point%2031%20-%2010h30%20.pdf"
+    },
+    {
+      "annonce": "2026-07-28",
+      "commune": "Barjols",
+      "dept": "Var (83)",
+      "lat": 43.5484,
+      "lon": 5.973,
+      "population": 2984,
+      "statut": "Les habitants évacués de Châteauvert et de Barjols sont autorisés à réintégrer leur domicile\nÀ L’EXCEPTION des lieux-dits suivants sur la commune de Barjols :\n> tous Les Piouroux\n> Les Cabassons\n> Les Mareliers",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47801/310136/file/2026-07-28%20CP%20Feu%20PONTEVES%20point%2030%20-%2018h30.pdf"
+    },
+    {
+      "annonce": "2026-07-28",
+      "commune": "Châteauvert",
+      "dept": "Var (83)",
+      "lat": 43.4992,
+      "lon": 6.0088,
+      "population": 141,
+      "statut": "Les habitants évacués de Châteauvert et de Barjols sont autorisés à réintégrer leur domicile\nÀ L’EXCEPTION des lieux-dits suivants sur la commune de Barjols :\n> tous Les Piouroux\n> Les Cabassons\n> Les Mareliers",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47801/310136/file/2026-07-28%20CP%20Feu%20PONTEVES%20point%2030%20-%2018h30.pdf"
+    },
+    {
+      "annonce": "2026-07-26",
+      "commune": "Brue-Auriac",
+      "dept": "Var (83)",
+      "lat": 43.5259,
+      "lon": 5.9402,
+      "population": 1463,
+      "statut": "Les habitants de la commune de Brue-Auriac, des quartiers des Carmes et des Gavottes à Barjols ont été autorisés à réintégrer leur domicile ce soir. Pour ceux du coeur du village de Barjols, ainsi que les quartiers Les Laus et Les Camps, la mesure de confinement a été levée.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47782/310020/file/2026-07-26%20CP%20Feu%20PONTEVES%20point%2023%20-%2020H15.pdf"
+    },
+    {
+      "annonce": "2026-07-26",
+      "commune": "Barjols",
+      "dept": "Var (83)",
+      "lat": 43.5484,
+      "lon": 5.973,
+      "population": 2984,
+      "statut": "Les habitants de la commune de Brue-Auriac, des quartiers des Carmes et des Gavottes à Barjols ont été autorisés à réintégrer leur domicile ce soir. Pour ceux du coeur du village de Barjols, ainsi que les quartiers Les Laus et Les Camps, la mesure de confinement a été levée.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47782/310020/file/2026-07-26%20CP%20Feu%20PONTEVES%20point%2023%20-%2020H15.pdf"
+    },
+    {
+      "annonce": "2026-07-24",
+      "commune": "Pontevès",
+      "dept": "Var (83)",
+      "lat": 43.5509,
+      "lon": 6.0687,
+      "population": 784,
+      "statut": "Les habitants de Pontevès et Montfort-sur-Argens sont autorisés à rentrer chez eux.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47770/309960/file/2026-07-24%20CP%20Feu%20PONTEVES%20point%2015-%20.pdf"
+    },
+    {
+      "annonce": "2026-07-24",
+      "commune": "Montfort-sur-Argens",
+      "dept": "Var (83)",
+      "lat": 43.4712,
+      "lon": 6.6861,
+      "population": 1453,
+      "statut": "Les habitants de Pontevès et Montfort-sur-Argens sont autorisés à rentrer chez eux.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47770/309960/file/2026-07-24%20CP%20Feu%20PONTEVES%20point%2015-%20.pdf"
+    },
+    {
+      "annonce": "2026-07-23",
+      "commune": "Feu du Gros-Bessillon",
+      "dept": "Var (83)",
+      "lat": 43.5246,
+      "lon": 6.1436,
+      "population": null,
+      "statut": "Les personnes évacuées sont autorisées à regagner leurs habitations.",
+      "source": "Préfecture du Var",
+      "source_url": "https://www.var.gouv.fr/contenu/telechargement/47733/309761/file/2026-07-23%20CP%20les%20%C3%A9vacu%C3%A9s%20autoris%C3%A9s%20%C3%A0%20rentrer%20chez%20eux%20.pdf"
     }
   ]
 }
