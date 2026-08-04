@@ -47,6 +47,14 @@ Le frontend utilise un jeton public Mapbox (`pk.…` dans `public/index.html`). 
 
 Les PR sont bienvenues — en particulier la mise à jour de `situation.json` / `evacuations.json` (toujours avec source et date) pendant les épisodes de feux. Toute contribution doit respecter la règle : pas de chiffre sans source, pas d'estimation sans étiquette.
 
+Le **format attendu des entrées** (champs, unités, sourçage) est décrit dans [le modèle de PR](.github/PULL_REQUEST_TEMPLATE.md), qui s'affiche automatiquement à l'ouverture d'une pull request. Avant de commiter :
+
+```bash
+python3 scripts/check_data.py
+```
+
+Ce script vérifie la validité du JSON et le format de chaque entrée. Il n'est pas décoratif : le serveur lit ces fichiers derrière un `except` silencieux, donc un JSON invalide ne déclenche aucune erreur — il vide simplement le panneau en production. La même vérification tourne en CI sur chaque PR touchant ces fichiers.
+
 ## Licence
 
 [MIT](LICENSE) — © 2026 Lucas Legrand.
