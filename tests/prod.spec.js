@@ -313,9 +313,9 @@ test.describe('Front prod', () => {
   // couches en trop », les nôtres — et n'émet alors PAS 'style.load', donc rien ne
   // les remet. Le test surveille les deux symptômes : les couches et l'événement.
   test('recliquer le fond de carte actif ne perd aucune couche', async ({ page }) => {
+    test.slow();   // 5 rechargements de style, tuiles satellite comprises
     await page.goto(BASE, { waitUntil: 'networkidle' });
     await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
-    await page.waitForTimeout(9000); // laisse charger foyers + zones brûlées
 
     const nos = () => page.evaluate(() =>
       ['burned-fill', 'burned-line', 'fires', 'wind-dots', 'foyers']
@@ -332,21 +332,27 @@ test.describe('Front prod', () => {
       expect(await nos(), `couches perdues après ${quand}`).toEqual(expect.arrayContaining(avant));
 
     await page.evaluate(() => { window.__sl = 0; map.on('style.load', () => window.__sl++); });
+    const sl = () => page.evaluate(() => window.__sl);
+
+    // On attend l'événement plutôt qu'un délai fixe : c'est ce qui manquait dans le
+    // bug (aucun 'style.load' n'était émis), donc l'attendre est déjà la moitié du
+    // test — et ça évite d'empiler des secondes d'attente à l'aveugle.
+    const bascule = async (clic, quand) => {
+      const n = await sl();
+      await page.click(clic);
+      await expect.poll(sl, { timeout: 25000, message: `aucun style.load après ${quand}` })
+        .toBeGreaterThan(n);
+      await intactes(quand);
+    };
 
     for (const fond of ['plan', 'plan', 'sat', 'sat']) {
-      await page.click(`.base-btn[data-b="${fond}"]`);
-      await page.waitForTimeout(3500);
-      await intactes(`un clic sur « ${fond} »`);
+      await bascule(`.base-btn[data-b="${fond}"]`, `un clic sur « ${fond} »`);
     }
-
     // bascule jour/nuit sur Satellite : les deux thèmes y pointent la même URL de
     // style, c'est donc le même piège par un autre chemin.
-    await page.click('#theme-toggle');
-    await page.waitForTimeout(3500);
-    await intactes('une bascule jour/nuit sur Satellite');
+    await bascule('#theme-toggle', 'une bascule jour/nuit sur Satellite');
 
-    // chaque bascule doit avoir provoqué un vrai rechargement de style
-    expect(await page.evaluate(() => window.__sl)).toBeGreaterThanOrEqual(5);
+    expect(await sl()).toBeGreaterThanOrEqual(5);
   });
 
   test.describe('vent en prefers-reduced-motion', () => {
