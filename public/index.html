@@ -466,12 +466,13 @@ body:not(.light) .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon{filter:invert(1
 @media (prefers-reduced-motion:reduce){
   .live::before{animation:none}
   .flame{animation:none}
-  #wind-canvas{display:none}   /* particules remplacées par les points de grille statiques (couche circle) */
-  /* …sauf si l'utilisateur a explicitement redemandé l'animation depuis la légende
-     vent (cas fréquent : Windows coupe les animations en économiseur de batterie,
-     donc `reduce` est actif sans que personne ne l'ait choisi). */
-  html.wind-motion #wind-canvas{display:block}
+  /* Le vent, lui, n'est pas coupé : il passe en version atténuée (voir windCalm()).
+     `reduce` est le plus souvent subi — l'économiseur de batterie de Windows le
+     déclenche seul — et une carte des vents figée en quadrillage de points se lit
+     comme une panne, pas comme un réglage. */
 }
+/* Points fixes : seulement si le visiteur les a explicitement demandés. */
+html.wind-static #wind-canvas{display:none}
 </style>
 
 <!-- Analytics — PostHog (EU cloud), mode cookieless : persistence "memory",
@@ -1123,11 +1124,11 @@ function installLayers(){
   if (!map.getLayer('wind-dots')){
     map.addLayer({id:'wind-dots', type:'circle', source:'wind',
       paint:{
-        'circle-radius': windReduced() ? 4.5 : 12,
+        'circle-radius': windStatic() ? 4.5 : 12,
         'circle-color':['interpolate',['linear'],['get','spd'],
           0, windRamp0(), 20,'#ffc93c', 40,'#ff8c1a', 60,'#ff4820'],
-        'circle-opacity': windReduced() ? 0.85 : 0.01,
-        'circle-stroke-width': windReduced() ? 0.6 : 0,
+        'circle-opacity': windStatic() ? 0.85 : 0.01,
+        'circle-stroke-width': windStatic() ? 0.6 : 0,
         'circle-stroke-color':'rgba(0,0,0,.4)',
       },
       layout:{'visibility':'none'}});
@@ -2302,23 +2303,34 @@ async function loadWindIfNeeded(){
 function reducedMotion(){
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
-/* Override explicite des particules de vent.
-   `prefers-reduced-motion: reduce` se déclenche bien au-delà du choix d'accessibilité :
-   sous Windows, désactiver « Afficher les animations » — ce que fait automatiquement
-   l'économiseur de batterie — le met à `reduce`. Résultat : des visiteurs qui n'ont rien
-   demandé voyaient la grille de points statiques à la place du vent animé.
-   On respecte donc toujours la préférence par défaut, mais la légende vent propose
-   de réactiver l'animation ; le choix est mémorisé.
-   Volontairement limité au vent : les pulsations de foyer (ringRunning) et les
-   animations CSS restent coupées en reduced-motion. */
-let windForceMotion = false;
-try{ windForceMotion = localStorage.getItem('ff-wind-motion') === '1'; }catch(e){}
-document.documentElement.classList.toggle('wind-motion', windForceMotion);
-function windReduced(){ return reducedMotion() && !windForceMotion; }
-function setWindMotion(on){
-  windForceMotion = !!on;
-  try{ localStorage.setItem('ff-wind-motion', windForceMotion ? '1' : '0'); }catch(e){}
-  document.documentElement.classList.toggle('wind-motion', windForceMotion);
+/* Traitement de `prefers-reduced-motion` sur la couche vent.
+
+   La préférence se déclenche bien au-delà du choix d'accessibilité : sous Windows,
+   désactiver « Afficher les animations » — ce que fait seul l'économiseur de batterie —
+   la met à `reduce`. Elle est donc massivement subie, pas choisie.
+
+   Couper les particules dans ce cas laissait un quadrillage de points fixes, que les
+   visiteurs lisaient comme une carte en panne (c'est le bug qui a été signalé deux fois).
+   On anime donc pour tout le monde, mais en version **atténuée** quand la préférence est
+   active : 40 % de particules en moins, 40 % moins vite. Du mouvement calme plutôt
+   qu'une image figée — et surtout pas un calque devenu invisible, qui tromperait
+   exactement autant.
+
+   Qui veut réellement zéro mouvement garde la main : la légende vent propose les points
+   fixes, et ce choix-là est mémorisé.
+
+   Volontairement limité au vent : les pulsations de foyer (ringRunning) et les animations
+   CSS restent coupées net en reduced-motion. */
+let windStaticDots = false;
+try{ windStaticDots = localStorage.getItem('ff-wind-static') === '1'; }catch(e){}
+document.documentElement.classList.toggle('wind-static', windStaticDots);
+function windStatic(){ return windStaticDots; }
+function windCalm(){ return reducedMotion() && !windStaticDots; }
+function setWindStatic(on){
+  windStaticDots = !!on;
+  try{ localStorage.setItem('ff-wind-static', windStaticDots ? '1' : '0'); }catch(e){}
+  document.documentElement.classList.toggle('wind-static', windStaticDots);
+  windParticles = null;        // densité recalculée au prochain démarrage du moteur
   applyWindDotsStyle();
   updateWindLegend();
   updateWindEngine();
@@ -2328,10 +2340,10 @@ function setWindMotion(on){
    Appelé à la création de la couche ET à chaque bascule (le paint n'est pas réévalué seul). */
 function applyWindDotsStyle(){
   if (!map || !map.getLayer || !map.getLayer('wind-dots')) return;
-  const r = windReduced();
-  map.setPaintProperty('wind-dots','circle-radius', r ? 4.5 : 12);
-  map.setPaintProperty('wind-dots','circle-opacity', r ? 0.85 : 0.01);
-  map.setPaintProperty('wind-dots','circle-stroke-width', r ? 0.6 : 0);
+  const s = windStatic();
+  map.setPaintProperty('wind-dots','circle-radius', s ? 4.5 : 12);
+  map.setPaintProperty('wind-dots','circle-opacity', s ? 0.85 : 0.01);
+  map.setPaintProperty('wind-dots','circle-stroke-width', s ? 0.6 : 0);
 }
 /* Rampe de couleur par vitesse (km/h), identique aux anciennes flèches.
    Thème clair : départ plus sombre pour rester lisible sur fond clair. */
@@ -2463,33 +2475,40 @@ function updateWindLegend(){
   }
   updateWindMotionNote();
 }
-/* Explique pourquoi les particules sont remplacées par des points, et propose la bascule.
-   N'apparaît que si le système demande de réduire les animations. */
+/* Sortie de secours pour qui veut réellement zéro mouvement, et explication du mode
+   atténué. N'apparaît que si le système réduit les animations, ou si les points fixes
+   ont été demandés — sinon c'est du bruit pour tout le monde. */
 function updateWindMotionNote(){
   const box = document.getElementById('wl-motion');
   if (!box) return;
-  const show = layers.wind && reducedMotion();
+  const show = layers.wind && (reducedMotion() || windStaticDots);
   box.classList.toggle('on', show);
   if (!show) return;
-  box.querySelector('.wl-m-txt').textContent = windForceMotion
-    ? 'Animation forcée malgré le réglage « réduire les animations » de votre système.'
-    : 'Votre système demande de réduire les animations (accessibilité ou économiseur de batterie) : les particules sont remplacées par les points de grille.';
+  box.querySelector('.wl-m-txt').textContent = windStaticDots
+    ? 'Vent en points fixes : chaque point est une maille de la grille, sa couleur donne la vitesse.'
+    : 'Votre système demande de réduire les animations (accessibilité ou économiseur de batterie) : le vent est affiché en version atténuée.';
   const btn = box.querySelector('#wl-motion-btn');
-  btn.textContent = windForceMotion ? 'Revenir aux points' : "Activer l'animation";
-  btn.setAttribute('aria-pressed', windForceMotion ? 'true' : 'false');
+  btn.textContent = windStaticDots ? "Animer le vent" : 'Passer en points fixes';
+  btn.setAttribute('aria-pressed', windStaticDots ? 'true' : 'false');
 }
 document.getElementById('wl-motion-btn')
-  .addEventListener('click', () => setWindMotion(!windForceMotion));
+  .addEventListener('click', () => setWindStatic(!windStaticDots));
 
 /* --- moteur d'animation (rAF) --- */
 let windParticles = null, windRaf = null, windCount = 0;
 const WIND_K = 0.0032;   // facteur d'avancement de base (calibré visuellement, ~px/frame constant selon zoom)
 /* Densité des particules. Le vent est un décor : il indique un régime et une
    direction, il ne se lit pas point par point. À 3 000 traînées l'écran se
-   remplissait au point de concurrencer les foyers, qui sont le sujet. */
+   remplissait au point de concurrencer les foyers, qui sont le sujet.
+   En mode atténué on réduit ce qui *bouge* — le nombre de particules et leur
+   vitesse — mais pas leur visibilité : traînées et opacité restent nominales.
+   Première version calibrée à l'aveugle : trois atténuations cumulées (densité,
+   vitesse, fondu, opacité) donnaient un vent 11 fois moins visible, donc une
+   carte vide. Aussi trompeur que le quadrillage figé qu'on venait d'enlever. */
 function initParticles(){
   const w = windCanvas.width, h = windCanvas.height;
-  windCount = Math.min(1200, Math.round(w*h/1500/windDpr/windDpr));
+  const densite = windCalm() ? 2500 : 1500;
+  windCount = Math.min(1200, Math.round(w*h/densite/windDpr/windDpr));
   windParticles = new Array(windCount);
   for (let i=0;i<windCount;i++) windParticles[i] = spawnParticle();
 }
@@ -2502,7 +2521,7 @@ function spawnParticle(){
   };
 }
 function windRunning(){
-  return layers.wind && windField && !windReduced() &&
+  return layers.wind && windField && !windStatic() &&
          document.visibilityState === 'visible';
 }
 function updateWindEngine(){
@@ -2518,9 +2537,11 @@ function windFrame(){
   windRaf = null;
   if (!windRunning()){ if (windCtx&&windCanvas) windCtx.clearRect(0,0,windCanvas.width,windCanvas.height); return; }
   const ctx = windCtx, W = windCanvas.width, H = windCanvas.height;
+  const calme = windCalm();
   // fondu des traînées existantes
   // 0,90 au lieu de 0,94 : la traînée s'efface plus vite, donc elle est plus
-  // courte et la carte reste lisible dessous.
+  // courte et la carte reste lisible dessous. Identique en mode atténué : c'est
+  // la quantité de mouvement qu'on réduit, pas la lisibilité du calque.
   ctx.globalCompositeOperation = 'destination-in';
   ctx.fillStyle = 'rgba(0,0,0,0.90)';
   ctx.fillRect(0,0,W,H);
@@ -2529,7 +2550,9 @@ function windFrame(){
   ctx.lineCap = 'round';
 
   const zoom = map.getZoom();
-  const k = WIND_K / Math.pow(2, zoom - 5);
+  // en mode atténué : 40 % moins vite, et 40 % de particules en moins (initParticles).
+  // Le régime et la direction restent lisibles, le défilement ne s'impose plus.
+  const k = WIND_K * (calme ? 0.6 : 1) / Math.pow(2, zoom - 5);
   const b = map.getBounds();
   const west=b.getWest(), east=b.getEast(), south=b.getSouth(), north=b.getNorth();
 
