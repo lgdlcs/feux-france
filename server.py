@@ -230,13 +230,16 @@ def fetch_feed(feed):
         if is_industrial(lat, lon):
             continue  # torchère / raffinerie / aciérie : chaleur permanente, pas un feu
         acq_time = row["acq_time"].zfill(4)
+        # 4 décimales (~11 m) sur un pixel satellite de 375 m à 1 km : aucune
+        # perte utile, et ~25 Ko de JSON gzippé en moins sur les 11 000 points.
+        # `satellite` n'est pas transmis : le libellé se déduit de `source` via
+        # la liste `feeds` du même payload, au lieu d'être répété par point.
         points.append({
-            "lat": lat,
-            "lon": lon,
+            "lat": round(lat, 4),
+            "lon": round(lon, 4),
             "acq_utc": f"{row['acq_date']}T{acq_time[:2]}:{acq_time[2:]}:00Z",
-            "frp": float(row.get("frp") or 0),
+            "frp": round(float(row.get("frp") or 0), 2),
             "confidence": normalize_confidence(str(row.get("confidence", "")).strip().lower()),
-            "satellite": feed["label"],
             "source": feed["id"],
             "daynight": row.get("daynight", ""),
         })
