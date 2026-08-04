@@ -30,7 +30,7 @@ def charge(nom):
     """Signale précisément les deux fautes de frappe qui cassent le JSON."""
     chemin = ROOT / nom
     if not chemin.exists():
-        err(nom, "fichier", "introuvable")
+        err(chemin, "fichier", "introuvable")
         return None
     brut = chemin.read_text(encoding="utf-8")
     for i, ligne in enumerate(brut.split("\n"), 1):
