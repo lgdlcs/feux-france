@@ -128,6 +128,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--txt);overflow:hidd
 }
 .wl-state b{color:var(--txt);font-weight:600}
 .wl-state.fut b{color:var(--ember)}
+.wl-conv{margin-top:5px;font-family:var(--sans);font-size:10px;line-height:1.35;color:var(--faint)}
+.wl-conv b{color:var(--dim);font-weight:600}
 /* note « animation coupée par le système » + bouton de réactivation ;
    affichée seulement quand prefers-reduced-motion est actif */
 #wl-motion{display:none;margin-top:7px}
@@ -348,6 +350,9 @@ h2{
 .pp .sep{border:none;border-top:1px solid var(--line);margin:9px 0}
 .pp .sub{font-family:var(--sans);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ember);margin-bottom:5px}
 .pp .arr{display:inline-block}
+/* Sur sa propre ligne, alignée sur la colonne des valeurs (largeur de .pp k) :
+   en flux, la mention passait à la ligne au milieu et repartait à la marge. */
+.pp .vers{display:block;margin-left:120px;color:var(--faint);font-size:11px}
 /* Nature de l'info dans les popups : mesure (gris) / officiel (vert) /
    estimation non officielle (ambre) / prévision (bleu). Étiquette + liseré. */
 .tag{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.09em;
@@ -585,6 +590,9 @@ posthog.init('phc_mL9DG2ssoXyGhVoVmtGFxEh2jqMVn5pepeqXfQcCvAxc', {
       <div class="wl-bar"></div>
       <div class="wl-ticks"><span>0</span><span>20</span><span>40</span><span>60</span></div>
       <div class="wl-state" id="wl-state">vent actuel</div>
+      <!-- La convention, écrite une fois : les traînées suivent l'écoulement, alors
+           que « vent de NO » nomme l'origine. Sans ça, les deux se lisent à l'envers. -->
+      <div class="wl-conv">les traînées vont dans le <b>sens du vent</b> ; « vent de NO » = <b>venant</b> du nord-ouest</div>
       <div id="wl-motion">
         <div class="wl-m-txt"></div>
         <button type="button" id="wl-motion-btn"></button>
@@ -803,9 +811,24 @@ function ago(ms){
 }
 const CARD = ['N','NE','E','SE','S','SO','O','NO'];
 function cardinal(deg){ return CARD[Math.round(((deg % 360) + 360) % 360 / 45) % 8]; }
+/* Direction du vent : deux conventions se télescopent, et l'affichage doit lever
+   l'ambiguïté lui-même. La donnée Open-Meteo est météorologique — `dir` est la
+   direction d'OÙ VIENT le vent (321 = vent de nord-ouest). Notre flèche, elle,
+   pointe VERS où il souffle, comme les particules animées. Juxtaposer les deux
+   sans le dire (« ↘ de NO ») se lit comme une contradiction, et invite à conclure
+   que la carte affiche l'inverse des autres sites (issue #6). On nomme donc les
+   deux bouts explicitement. */
 function windArrow(deg){                 // flèche pointant dans le sens du vent (vers où il souffle)
   const flow = (deg + 180) % 360;
-  return `<span class="arr" style="transform:rotate(${flow}deg)">↑</span>`;
+  return `<span class="arr" title="Sens d'écoulement : vers ${artCard(cardinal(flow))}" `
+       + `style="transform:rotate(${flow}deg)">↑</span>`;
+}
+function artCard(c){ return (c === 'E' || c === 'O') ? "l'" + c : 'le ' + c; }
+/* Bloc « ↘ de NO » + ligne « souffle vers le SE ». */
+function windDirTxt(deg){
+  if (deg == null) return 'n.c.';
+  return `${windArrow(deg)} de ${cardinal(deg)}`
+       + `<span class="vers">souffle vers ${artCard(cardinal((deg + 180) % 360))}</span>`;
 }
 function host(url){ try { return new URL(url).hostname.replace(/^www\./, ''); } catch(e){ return url; } }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -1241,7 +1264,7 @@ function bindInteractions(){
           <div class="pp-t">🌬 Vent ${esc(when)}<span class="tag ${fut ? 'prev' : 'mes'}">${fut ? 'prévision' : 'mesure'}</span></div>
           <k>Vitesse</k>${spd != null ? Math.round(spd) + ' km/h' : 'n.c.'}<br>
           <k>Rafales</k>${gust != null ? Math.round(gust) + ' km/h' : 'n.c.'}<br>
-          <k>Direction</k>${dir != null ? windArrow(dir) + ' de ' + cardinal(dir) : 'n.c.'}<br>
+          <k>Direction</k>${windDirTxt(dir)}<br>
           <span style="color:var(--faint);font-size:11px">${fut ? 'Vent prévu' : 'Vent actuel'} Open-Meteo (10 m).</span>
         </div>`)
       .addTo(map);
@@ -1460,7 +1483,7 @@ function foyerPopup(f, now){
       <k>Humidité</k>${m.relative_humidity_2m != null ? Math.round(m.relative_humidity_2m) + ' %' : 'n.c.'}${m.vapour_pressure_deficit != null ? ' · VPD ' + (Math.round(m.vapour_pressure_deficit * 10) / 10) + ' kPa' : ''}<br>
       <k>Vent</k>${m.wind_speed_10m != null ? Math.round(m.wind_speed_10m) + ' km/h' : 'n.c.'} · rafales ${m.wind_gusts_10m != null ? Math.round(m.wind_gusts_10m) + ' km/h' : 'n.c.'}`;
     if (m.wind_direction_10m != null)
-      html += `<br><k>Direction</k>${windArrow(m.wind_direction_10m)} de ${cardinal(m.wind_direction_10m)}`;
+      html += `<br><k>Direction</k>${windDirTxt(m.wind_direction_10m)}`;
     html += `</div>`;
   }
 

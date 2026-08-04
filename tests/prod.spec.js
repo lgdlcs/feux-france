@@ -272,6 +272,42 @@ test.describe('Front prod', () => {
     await expect(page.locator('#wl-motion')).not.toHaveClass(/\bon\b/);
   });
 
+  // issue #6 : des directions jugées incompatibles avec d'autres sites, parfois
+  // opposées. La donnée est météorologique (`dir` = d'où vient le vent) et les
+  // particules vont dans le sens de l'écoulement. Ce test verrouille le seul point
+  // où une inversion peut se glisser : le signe de la conversion dir → (u,v).
+  test('le sens des particules correspond à la donnée source', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    await page.waitForTimeout(8000);
+
+    const r = await page.evaluate(() => {
+      let pire = 0, n = 0;
+      for (const p of windPoints) {
+        const f = windField.sample(p.lat, p.lon);
+        if (!f || p.dir == null || !p.speed) continue;
+        // cap du déplacement (0 = nord, 90 = est) contre le cap attendu dir+180
+        const cap = ((Math.atan2(f.u, f.v) * 180 / Math.PI) % 360 + 360) % 360;
+        const ecart = Math.abs(((cap - (p.dir + 180)) % 360 + 540) % 360 - 180);
+        pire = Math.max(pire, ecart); n++;
+      }
+      return { pire, n };
+    });
+    expect(r.n).toBeGreaterThan(50);
+    // Pas 0 : sample() interpole entre nœuds voisins, et les coordonnées renvoyées
+    // par le modèle sont légèrement décalées de la grille — mesuré ~2° au pire.
+    // Le seuil sert à attraper une faute de signe (180°) ou un u/v inversé (90°),
+    // pas à mesurer l'interpolation.
+    expect(r.pire).toBeLessThan(30);
+
+    // et l'affichage nomme les deux bouts, pour qu'une flèche vers le SE à côté
+    // d'un « de NO » ne se lise plus comme une contradiction
+    const txt = await page.evaluate(() => windDirTxt(321).replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ').trim());
+    expect(txt).toContain('de NO');
+    expect(txt).toContain('souffle vers le SE');
+  });
+
   // issue #5 : recliquer le fond DÉJÀ actif effaçait zones brûlées et opérations.
   // Mapbox résout un setStyle vers un style identique en diff — « supprimer les
   // couches en trop », les nôtres — et n'émet alors PAS 'style.load', donc rien ne
@@ -285,22 +321,29 @@ test.describe('Front prod', () => {
       ['burned-fill', 'burned-line', 'fires', 'wind-dots', 'foyers']
         .filter(id => !!map.getLayer(id)));
 
+    // Les zones brûlées se chargent en lazy : on attend qu'elles soient là, sinon le
+    // baseline est incomplet et la comparaison casse quand elles arrivent en cours de
+    // test. On compare ensuite en inclusion, pas en égalité — une couche de PLUS
+    // n'est pas le symptôme cherché.
+    await expect.poll(nos, { timeout: 20000 }).toContain('burned-fill');
     const avant = await nos();
     expect(avant.length).toBeGreaterThan(2);
+    const intactes = async (quand) =>
+      expect(await nos(), `couches perdues après ${quand}`).toEqual(expect.arrayContaining(avant));
 
     await page.evaluate(() => { window.__sl = 0; map.on('style.load', () => window.__sl++); });
 
     for (const fond of ['plan', 'plan', 'sat', 'sat']) {
       await page.click(`.base-btn[data-b="${fond}"]`);
       await page.waitForTimeout(3500);
-      expect(await nos(), `couches perdues après un clic sur « ${fond} »`).toEqual(avant);
+      await intactes(`un clic sur « ${fond} »`);
     }
 
     // bascule jour/nuit sur Satellite : les deux thèmes y pointent la même URL de
     // style, c'est donc le même piège par un autre chemin.
     await page.click('#theme-toggle');
     await page.waitForTimeout(3500);
-    expect(await nos()).toEqual(avant);
+    await intactes('une bascule jour/nuit sur Satellite');
 
     // chaque bascule doit avoir provoqué un vrai rechargement de style
     expect(await page.evaluate(() => window.__sl)).toBeGreaterThanOrEqual(5);
