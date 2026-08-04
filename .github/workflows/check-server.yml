@@ -1,0 +1,25 @@
+# Le serveur sert des sources externes derrière un cache. Les régressions qui font
+# mal ne sont pas des exceptions bruyantes mais des boucles polies : retenter une
+# source en erreur à chaque requête suffit à rester bloqué en 429. D'où ce test.
+name: Serveur
+
+on:
+  pull_request:
+    paths:
+      - 'server.py'
+      - 'tests/test_cold_start.py'
+  push:
+    branches: [main]
+    paths:
+      - 'server.py'
+      - 'tests/test_cold_start.py'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 tests/test_cold_start.py

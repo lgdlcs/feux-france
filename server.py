@@ -414,6 +414,9 @@ def _store_fires(data):
         _cache["ts"] = time.time()
 
 
+COLD_FAIL_COOLDOWN = 120   # s d'attente avant de retenter une source qui vient d'échouer
+
+
 def cold_start(cache, cache_lock, build_lock, build, store):
     """Sert le cache tel quel (le thread d'arrière-plan tient la fraîcheur) et
     ne construit en direct que s'il est encore vide — le tout premier instant
@@ -424,7 +427,16 @@ def cold_start(cache, cache_lock, build_lock, build, store):
     collecte complète : sur le petit CPU de l'hébergement elles se ralentissaient
     mutuellement et aucune ne se terminait jamais, si bien que le cache restait
     vide indéfiniment et que /api/fires ne répondait plus du tout. Ici les
-    visiteurs attendent la même construction au lieu de la multiplier."""
+    visiteurs attendent la même construction au lieu de la multiplier.
+
+    Un échec se mémorise, lui aussi. Sans ça, une source en erreur au démarrage
+    laisse le cache vide, donc CHAQUE visiteur relance une collecte complète en
+    direct — et quand l'erreur est justement un 429, ces tentatives entretiennent
+    le rejet au lieu d'en sortir. Observé en prod le 4 août 2026 sur /api/wind :
+    Open-Meteo en 429, une grille de 327 points redemandée à chaque requête, et
+    aucune sortie possible. Après un échec on laisse donc passer COLD_FAIL_COOLDOWN
+    avant de retenter : le thread d'arrière-plan, lui, continue son cycle normal et
+    remplit le cache dès que la source revient."""
     with cache_lock:
         data = cache["data"]
     if data is not None:
@@ -432,9 +444,18 @@ def cold_start(cache, cache_lock, build_lock, build, store):
     with build_lock:
         with cache_lock:
             data = cache["data"]
+            fail_ts = cache.get("fail_ts", 0)
         if data is not None:
             return data      # un autre l'a construit pendant qu'on attendait
-        data = build()
+        if time.time() - fail_ts < COLD_FAIL_COOLDOWN:
+            raise RuntimeError("source indisponible (nouvelle tentative dans "
+                               f"{int(COLD_FAIL_COOLDOWN - (time.time() - fail_ts))} s)")
+        try:
+            data = build()
+        except Exception:
+            with cache_lock:
+                cache["fail_ts"] = time.time()
+            raise
         store(data)
     return data
 
