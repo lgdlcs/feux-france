@@ -272,6 +272,40 @@ test.describe('Front prod', () => {
     await expect(page.locator('#wl-motion')).not.toHaveClass(/\bon\b/);
   });
 
+  // issue #5 : recliquer le fond DÉJÀ actif effaçait zones brûlées et opérations.
+  // Mapbox résout un setStyle vers un style identique en diff — « supprimer les
+  // couches en trop », les nôtres — et n'émet alors PAS 'style.load', donc rien ne
+  // les remet. Le test surveille les deux symptômes : les couches et l'événement.
+  test('recliquer le fond de carte actif ne perd aucune couche', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await expect(page.locator('.mapboxgl-canvas')).toBeVisible({ timeout: 20000 });
+    await page.waitForTimeout(9000); // laisse charger foyers + zones brûlées
+
+    const nos = () => page.evaluate(() =>
+      ['burned-fill', 'burned-line', 'fires', 'wind-dots', 'foyers']
+        .filter(id => !!map.getLayer(id)));
+
+    const avant = await nos();
+    expect(avant.length).toBeGreaterThan(2);
+
+    await page.evaluate(() => { window.__sl = 0; map.on('style.load', () => window.__sl++); });
+
+    for (const fond of ['plan', 'plan', 'sat', 'sat']) {
+      await page.click(`.base-btn[data-b="${fond}"]`);
+      await page.waitForTimeout(3500);
+      expect(await nos(), `couches perdues après un clic sur « ${fond} »`).toEqual(avant);
+    }
+
+    // bascule jour/nuit sur Satellite : les deux thèmes y pointent la même URL de
+    // style, c'est donc le même piège par un autre chemin.
+    await page.click('#theme-toggle');
+    await page.waitForTimeout(3500);
+    expect(await nos()).toEqual(avant);
+
+    // chaque bascule doit avoir provoqué un vrai rechargement de style
+    expect(await page.evaluate(() => window.__sl)).toBeGreaterThanOrEqual(5);
+  });
+
   test.describe('vent en prefers-reduced-motion', () => {
     test.use({ contextOptions: { reducedMotion: 'reduce' } });
 

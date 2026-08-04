@@ -711,11 +711,23 @@ function applyThemeClass(){
   document.body.classList.toggle('light', theme === 'light');
   document.getElementById('theme-toggle').textContent = theme === 'light' ? '🌙' : '☀️';
 }
+/* Seul point d'entrée pour changer de style. `diff:false` n'est pas une précaution
+   décorative : par défaut Mapbox tente une mise à jour différentielle, et quand le
+   style demandé est IDENTIQUE au style courant (reclic sur le fond déjà actif, ou
+   bascule jour/nuit sur Satellite et Relief, dont les deux thèmes pointent la même
+   URL) le diff se résume à « supprimer les couches en trop » — c'est-à-dire TOUTES
+   les nôtres. Pire, ce chemin n'émet pas 'style.load' : installLayers() n'est jamais
+   rappelé et les zones brûlées, opérations, foyers… restent perdues jusqu'au
+   prochain changement de fond (issue #5). Le rechargement complet, lui, émet
+   toujours 'style.load' et reconstruit tout, thème compris. */
+function applyStyle(){
+  map.setStyle(STYLES[currentBase][theme], {diff:false});   // 'style.load' rebâtit tout via installLayers()
+}
 document.getElementById('theme-toggle').addEventListener('click', () => {
   theme = theme === 'light' ? 'dark' : 'light';
   localStorage.setItem('ff-theme', theme);
   applyThemeClass();
-  map.setStyle(STYLES[currentBase][theme]);   // 'style.load' rebâtit tout via installLayers()
+  applyStyle();
 });
 
 /* ============================================================
@@ -726,7 +738,7 @@ function setBase(name){
   currentBase = name;
   localStorage.setItem('ff-base', name);
   document.querySelectorAll('.base-btn').forEach(b => b.classList.toggle('on', b.dataset.b === name));
-  map.setStyle(STYLES[name][theme]);          // 'style.load' rebâtit tout
+  applyStyle();
 }
 document.querySelectorAll('.base-btn').forEach(b => b.classList.toggle('on', b.dataset.b === currentBase));
 document.querySelectorAll('.base-btn').forEach(b => b.addEventListener('click', () => setBase(b.dataset.b)));
@@ -2637,7 +2649,7 @@ map.on('style.load', () => {
   const spStr = typeof sp === 'string' ? sp : (Array.isArray(sp) && sp[0] ? sp[0].url : '');
   const loadedId = (String(spStr).match(/mapbox\/([^/]+)/) || [])[1] || '';
   if (wantId && loadedId && loadedId !== wantId){
-    map.setStyle(want);   // course détectée : le prochain style.load rebâtira
+    applyStyle();         // course détectée : le prochain style.load rebâtira
     return;
   }
   installLayers();
