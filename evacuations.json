@@ -1,6 +1,6 @@
 {
   "_comment": "Évacuations et retours annoncés officiellement (préfectures, relayées par la presse). Fichier tenu à la main : ajouter/retirer des entrées ici, le serveur le sert tel quel sur /api/situation. Coordonnées = centres officiels geo.api.gouv.fr. Un JSON invalide est avalé silencieusement par le serveur et vide le panneau : valider avant de commiter (voir CONTRIBUTING.md). « retours » n'est pas encore affiché par le front.",
-  "updated": "2026-08-03T00:00:00Z",
+  "updated": "2026-08-05T00:00:00Z",
   "evacuations": [
     {
       "commune": "Lacanau", "dept": "Gironde (33)", "lat": 44.9879, "lon": -1.096,
@@ -522,6 +522,61 @@
     }
   ],
   "retours": [
+    {
+      "annonce": "2026-08-04",
+      "commune": "Le Porge",
+      "dept": "Gironde (33)",
+      "lat": 44.8649,
+      "lon": -1.1351,
+      "population": 3465,
+      "statut": "Réouverture du camping de la Grigne et du domaine résidentiel de la Jenny.\n• à partir de mercredi 5 août 10h00, pour les personnes ayant été évacuées le 22 juillet ;\n• à partir du samedi 8 août pour les nouveaux arrivants.",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/88052/662430/file/2026-08-04%20CP%20R%C3%A9ouverture%20campings%20Porge.pdf"
+    },
+    {
+      "annonce": "2026-08-04",
+      "commune": "Le Porge",
+      "dept": "Gironde (33)",
+      "lat": 44.8649,
+      "lon": -1.1351,
+      "population": 3465,
+      "statut": "Réouverture des quartiers Plein Soleil et Le Ferron au Porge (déminage effectué : récupération de 400 obus et munitions de la seconde guerre mondiale).",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/Actualites/Communiques-de-presse/Communiques-de-presse-2026/Aout-2026/Incendie-de-Saumos-point-de-situation-du-lundi-3-aout"
+    },
+    {
+      "annonce": "2026-08-04",
+      "commune": "Lège-Cap-Ferret",
+      "dept": "Gironde (33)",
+      "lat": 44.7452,
+      "lon": -1.174,
+      "population": 7909,
+      "statut": "Réouverture de plusieurs campings (Lège Bourg : La Pinède, La Prairie ; Claouey : Les Pastourelles, VVF, Domaine du Ferret, Les Embruns, Les Viviers ; Piquey : Le Truc Vert)",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/Actualites/Communiques-de-presse/Communiques-de-presse-2026/Aout-2026/Incendie-de-Saumos-Reouverture-de-plusieurs-campings-et-poursuite-des-consignes-de-vigilance"
+    },
+    {
+      "annonce": "2026-08-02",
+      "commune": "Le Porge",
+      "dept": "Gironde (33)",
+      "lat": 44.8649,
+      "lon": -1.1351,
+      "population": 3465,
+      "statut": "Réintégration autorisée ce lundi dans les communes de Lège Cap-Ferret et du Porge (hors secteurs du Ferron et de Plein Soleil : présence d’obus), et à l’exception de tous les campings.",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87962/661797/file/2026-08-02%20CP%20-%20R%C3%A9int%C3%A9gration%20de%202%20nouvelles%20communes.pdf"
+    },
+    {
+      "annonce": "2026-08-02",
+      "commune": "Lège-Cap-Ferret",
+      "dept": "Gironde (33)",
+      "lat": 44.7452,
+      "lon": -1.174,
+      "population": 7909,
+      "statut": "Réintégration autorisée ce lundi dans les communes de Lège Cap-Ferret et du Porge (hors secteurs du Ferron et de Plein Soleil : présence d’obus), et à l’exception de tous les campings.",
+      "source": "Préfecture de la Gironde",
+      "source_url": "https://www.gironde.gouv.fr/contenu/telechargement/87962/661797/file/2026-08-02%20CP%20-%20R%C3%A9int%C3%A9gration%20de%202%20nouvelles%20communes.pdf"
+    },
     {
       "commune": "Marcheprime", "dept": "Gironde (33)", "lat": 44.7033, "lon": -0.8557,
       "population": 5696, "statut": "Réintégration autorisée dans 4 nouvelles communes (Marcheprime, Arès, Saumos et Le Temple) ainsi que dans les quartiers de Lubec et de La Pointe à Audenge",
