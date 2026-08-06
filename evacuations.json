@@ -3,6 +3,61 @@
   "updated": "2026-08-05T00:00:00Z",
   "evacuations": [
     {
+      "annonce": "2026-08-03",
+      "commune": "Bellegarde-en-Diois (massif du Claps)",
+      "dept": "Drôme (26)",
+      "lat": 44.5344,
+      "lon": 5.4519,
+      "population": null,
+      "statut": "Évacuation préventive du hameau de Montlahuc, environ 50 personnes sont concernées.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2084395902861459743"
+    },
+    {
+      "annonce": "2026-07-09",
+      "commune": "Die (hameaux)",
+      "dept": "Drôme (26)",
+      "lat": 44.7332,
+      "lon": 5.3857,
+      "population": null,
+      "statut": "À titre préventif :\n• les hameaux de Grange Neuve, Perbeau et Ausson ont été évacués ;\n• le camping de la Pinède, situé sur la commune de Die, a également été évacué.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2075281249615155499"
+    },
+    {
+      "annonce": "2026-07-06",
+      "commune": "Barsac",
+      "dept": "Drôme (26)",
+      "lat": 44.7275,
+      "lon": 5.3056,
+      "population": 154,
+      "statut": "Par mesure de prévention, la préfète de la Drôme a ordonné l'évacuation des communes de Montmaur-en-Diois et de Barsac.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2074238847249272852"
+    },
+    {
+      "annonce": "2026-07-06",
+      "commune": "Montmaur-en-Diois",
+      "dept": "Drôme (26)",
+      "lat": 44.68,
+      "lon": 5.3646,
+      "population": 102,
+      "statut": "Par mesure de prévention, la préfète de la Drôme a ordonné l'évacuation des communes de Montmaur-en-Diois et de Barsac.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2074238847249272852"
+    },
+    {
+      "annonce": "2026-07-05",
+      "commune": "Die (hameaux)",
+      "dept": "Drôme (26)",
+      "lat": 44.7156,
+      "lon": 5.3112,
+      "population": null,
+      "statut": "La préfète a ordonné l’évacuation préventive de 35 personnes, localisée au niveau de la maison forestière du Grand Viopis, du hameau l’Hôpital et du Hameau le petit Viopis.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://www.drome.gouv.fr/contenu/telechargement/38153/251757/file/CP%20-05.07.26%20-%20Incendie%20%C3%A0%20Die_point%20de%20situation.pdf"
+    },
+    {
       "commune": "Lacanau", "dept": "Gironde (33)", "lat": 44.9879, "lon": -1.096,
       "population": 5739, "statut": "Évacuations des campings, des résidences de tourisme, des villages vacances et des parcs de loisirs sur les secteurs Lacanau Océan et les deux rives de Lacanau",
       "annonce": "2026-07-28",
@@ -522,6 +577,83 @@
     }
   ],
   "retours": [
+    {
+      "annonce": "2026-08-05",
+      "commune": "Beaumont-en-Diois (massif du Claps)",
+      "dept": "Drôme (26)",
+      "lat": 44.6026,
+      "lon": 5.4603,
+      "population": null,
+      "statut": "Les habitants évacués du haut de Beaumont ont pu regagner leur domicile ce matin.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2084966538885419345"
+    },
+    {
+      "annonce": "2026-07-14",
+      "commune": "Die (massif de Justin)",
+      "dept": "Drôme (26)",
+      "lat": 44.7434,
+      "lon": 5.3496,
+      "population": null,
+      "statut": "Toutes les mesures d'évacuation préventives sont désormais levées.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2077088353657172170"
+    },
+    {
+      "annonce": "2026-07-13",
+      "commune": "Barsac",
+      "dept": "Drôme (26)",
+      "lat": 44.7275,
+      "lon": 5.3056,
+      "population": 154,
+      "statut": "Retour progressif : Les habitants de Barsac ont pu regagner leur domicile. Ceux du hameau de Chapias devraient pouvoir rentrer demain matin si l'évolution favorable se confirme au cours de la nuit.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2076723201455915072"
+    },
+    {
+      "annonce": "2026-07-12",
+      "commune": "Barsac",
+      "dept": "Drôme (26)",
+      "lat": 44.7275,
+      "lon": 5.3056,
+      "population": 154,
+      "statut": "La mesure d’évacuation concernant la commune de Barsac sera levée demain.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2076368625645019322"
+    },
+    {
+      "annonce": "2026-07-12",
+      "commune": "Die",
+      "dept": "Drôme (26)",
+      "lat": 44.7515,
+      "lon": 5.3878,
+      "population": null,
+      "statut": "La réintégration du hameau de Chapias a dû être interrompue.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2076368625645019322"
+    },
+    {
+      "annonce": "2026-07-12",
+      "commune": "Die",
+      "dept": "Drôme (26)",
+      "lat": 44.7515,
+      "lon": 5.3878,
+      "population": 4844,
+      "statut": "Les mesures d’évacuation concernant les communes de Die et de Solaure-en-Diois sont levées à compter de ce jour, à 15 h.\nLe retour dans les logements et la reprise des activités sont désormais possibles.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2076275912148914521"
+    },
+    {
+      "annonce": "2026-07-12",
+      "commune": "Solaure en Diois",
+      "dept": "Drôme (26)",
+      "lat": 44.7112,
+      "lon": 5.3777,
+      "population": 456,
+      "statut": "Les mesures d’évacuation concernant les communes de Die et de Solaure-en-Diois sont levées à compter de ce jour, à 15 h.\nLe retour dans les logements et la reprise des activités sont désormais possibles.",
+      "source": "Préfecture de la Drôme",
+      "source_url": "https://x.com/Prefet26/status/2076275912148914521"
+    },
     {
       "annonce": "2026-08-04",
       "commune": "Le Porge",
